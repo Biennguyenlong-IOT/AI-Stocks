@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { StockHolding, Transaction, AIAnalysisResponse } from "../types";
 
@@ -18,33 +17,43 @@ export const analyzePortfolio = async (
     return `- [${h.brokerage}] ${h.symbol}: Tỷ trọng ${weight}%, Lãi/Lỗ: ${pnl}%, Ngành: ${h.sector}`;
   }).join('\n');
 
-  const prompt = `Bạn là một Giám đốc Quản lý Quỹ cấp cao với hơn 20 năm kinh nghiệm tại thị trường chứng khoán Việt Nam. Hãy thực hiện phân tích danh mục đầu tư dưới đây một cách cực kỳ chuyên sâu và thực chiến.
+  const prompt = `Bạn là một Giám đốc Quản lý Quỹ (Fund Manager) chuyên nghiệp. Hãy thực hiện phân tích danh mục này theo tiêu chuẩn quản trị rủi ro cao nhất.
 
-TỔNG QUAN TÀI CHÍNH:
-- Tổng tài sản: ${stats.totalAssets.toLocaleString('vi-VN')}đ
-- Tiền mặt hiện có: ${stats.totalCash.toLocaleString('vi-VN')}đ (Tỷ lệ: ${((stats.totalCash/stats.totalAssets)*100).toFixed(1)}%)
-- Lợi nhuận tổng: ${stats.totalProfit.toLocaleString('vi-VN')}đ (${stats.profitPercent.toFixed(2)}%)
+DỮ LIỆU TÀI CHÍNH HIỆN TẠI:
+- Tổng NAV: ${stats.totalAssets.toLocaleString('vi-VN')}đ
+- Tiền mặt: ${stats.totalCash.toLocaleString('vi-VN')}đ (Chiếm ${((stats.totalCash/stats.totalAssets)*100).toFixed(1)}% NAV)
+- Hiệu suất tổng: ${stats.profitPercent.toFixed(2)}%
 
-CHI TIẾT DANH MỤC (HOLDINGS):
+DANH MỤC CHI TIẾT:
 ${holdingDetails}
 
-LỊCH SỬ 10 GIAO DỊCH GẦN NHẤT:
-${transactions.slice(0, 10).map(t => `- ${t.date}: ${t.type} ${t.symbol || ''}, Khối lượng: ${t.quantity || 0}, Giá: ${t.price || 0}đ, Ghi chú: ${t.note || 'Không có'}`).join('\n')}
+LỊCH SỬ GIAO DỊCH GẦN ĐÂY:
+${transactions.slice(0, 8).map(t => `- ${t.date}: ${t.type} ${t.symbol || ''}, Khối lượng: ${t.quantity || 0}, Ghi chú: ${t.note || ''}`).join('\n')}
 
 YÊU CẦU PHÂN TÍCH CHUYÊN SÂU:
-1. ĐÁNH GIÁ CƠ CẤU (Asset Analysis): Nhận xét về sự phân bổ vốn giữa các mã và ngành. Có đang bị quá tập trung (concentration risk) vào một mã hay một sàn (brokerage) nào không?
-2. PHÂN TÍCH HÀNH VI (Trade Analysis): Dựa trên lịch sử giao dịch và ghi chú, hãy đánh giá phong cách đầu tư (đầu cơ, tích sản, hay hoảng loạn?). Các lệnh Buy/Sell có hợp lý về mặt quản trị vị thế không?
-3. CHỈ SỐ RỦI RO (Risk Score): Đưa ra điểm số từ 1-10 (1: Rất an toàn, 10: Cực kỳ rủi ro/All-in).
-4. CHIẾN LƯỢC HÀNH ĐỘNG: Đề xuất 3-4 hành động cụ thể (ví dụ: cơ cấu mã yếu, hạ tỷ trọng ngành nào, hoặc gia tăng tiền mặt dự phòng).
+1. ĐÁNH GIÁ CẤU TRÚC (Asset Analysis):
+   - Phân tích sự cân bằng giữa các nhóm ngành (Ngân hàng, BĐS, Thép, v.v.).
+   - Chỉ ra mã nào đang chiếm tỷ trọng quá lớn gây rủi ro tập trung.
+   - Nhận xét về tỷ lệ Tiền/Cổ phiếu trong bối cảnh thị trường hiện tại.
 
-Lưu ý: Ngôn ngữ chuyên nghiệp, sắc bén, không nói nước đôi. Trả về JSON theo schema.`;
+2. PHÂN TÍCH CHIẾN THUẬT (Trade Analysis):
+   - Đánh giá các lệnh mua/bán gần đây. Bạn có đang "gồng lỗ" hay "chốt lời non" không?
+   - Nhận diện tâm lý qua ghi chú (Fomo, hoảng loạn hay kỷ luật?).
+
+3. CHỈ SỐ RỦI RO (Risk Score): Thang điểm 1-10.
+
+4. KHUYẾN NGHỊ CƠ CẤU (Recommendations): 
+   - Đưa ra 3 hành động cụ thể để tối ưu danh mục.
+   - Nếu tỷ trọng ngành nào quá cao, hãy đề xuất con số tỷ trọng mục tiêu (ví dụ: hạ BĐS xuống dưới 20%).
+
+Yêu cầu trả về JSON chuẩn theo schema. Ngôn ngữ chuyên nghiệp, sắc bén.`;
 
   try {
     const response = await ai.models.generateContent({
       model: model,
       contents: prompt,
       config: {
-        systemInstruction: "Bạn là chuyên gia phân tích tài chính chuyên nghiệp, sử dụng ngôn từ thực chiến và am hiểu thị trường chứng khoán Việt Nam.",
+        systemInstruction: "Bạn là chuyên gia phân tích tài chính cấp cao, chuyên về quản trị danh mục và tối ưu hóa lợi nhuận tại thị trường Việt Nam.",
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -60,10 +69,10 @@ Lưu ý: Ngôn ngữ chuyên nghiệp, sắc bén, không nói nước đôi. Tr
     });
 
     const text = response.text;
-    if (!text) throw new Error("AI trả về rỗng");
+    if (!text) throw new Error("AI returned empty content");
     return JSON.parse(text) as AIAnalysisResponse;
   } catch (error) {
-    console.error("Gemini Deep Analysis Error:", error);
+    console.error("Gemini Analysis Error:", error);
     throw error;
   }
 };

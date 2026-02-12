@@ -33,6 +33,11 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recha
 import { StockHolding, Transaction, TransactionType, AIAnalysisResponse } from './types';
 import { analyzePortfolio } from './services/geminiService';
 
+// ========================================================
+// DÁN URL GOOGLE SCRIPT CỦA BẠN VÀO ĐÂY ĐỂ LƯU VĨNH VIỄN
+// ========================================================
+const HARDCODED_URL = ""; 
+
 type ViewType = 'dashboard' | 'brokerages';
 
 const INITIAL_TRANSACTION_FORM = {
@@ -53,7 +58,7 @@ const App: React.FC = () => {
   const [holdings, setHoldings] = useState<StockHolding[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [cashBalances, setCashBalances] = useState<Record<string, number>>({});
-  const [scriptUrl, setScriptUrl] = useState<string>(localStorage.getItem('google_script_url') || '');
+  const [scriptUrl, setScriptUrl] = useState<string>(HARDCODED_URL || localStorage.getItem('google_script_url') || '');
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSynced, setLastSynced] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
@@ -194,8 +199,9 @@ function doPost(e) {
 
   const stats = useMemo(() => {
     const stockValue = holdings.reduce((acc, curr) => acc + (curr.quantity * (curr.currentPrice || 0)), 0);
-    // FIX: Ép kiểu explicitly sang number[] để tránh lỗi unknown
-    const totalCash = (Object.values(cashBalances) as number[]).reduce((a, b) => a + b, 0);
+    // FIX TS ERROR: Type assertion to number[] for Object.values
+    const cashValues = Object.values(cashBalances) as number[];
+    const totalCash = cashValues.reduce((a, b) => a + b, 0);
     const totalAssets = totalCash + stockValue;
     const totalDeposited = transactions.filter(t => t.type === 'DEPOSIT').reduce((acc, curr) => acc + curr.totalAmount, 0);
     const totalWithdrawn = transactions.filter(t => t.type === 'WITHDRAW').reduce((acc, curr) => acc + curr.totalAmount, 0);
@@ -509,7 +515,6 @@ function doPost(e) {
                              </div>
                              <AIBlock title="Phân tích giao dịch" content={aiAnalysis.tradeAnalysis} />
                              <AIBlock title="Phân tích cấu trúc" content={aiAnalysis.assetAnalysis} />
-                             {/* Bổ sung Khuyến nghị chiến lược tại đây */}
                              <AIBlock title="Chiến lược hành động" content={
                                <div className="space-y-4">
                                  {aiAnalysis.recommendations.map((rec, idx) => (
@@ -767,7 +772,6 @@ const BrokerageCard: React.FC<{ name: string; cash: number; netCapital: number; 
     );
 };
 
-// Cập nhật AIBlock để hỗ trợ truyền nội dung dạng JSX/ReactNode
 const AIBlock: React.FC<{ title: string; content: React.ReactNode }> = ({ title, content }) => (
     <div className="space-y-3">
         <h4 className="text-[11px] font-black uppercase text-indigo-500 tracking-[0.2em] flex items-center gap-2"><ChevronRight size={14} className="animate-pulse"/> {title}</h4>
