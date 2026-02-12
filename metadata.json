@@ -1,5 +1,5 @@
 {
-  "name": "VNTrade AI - Trợ Lý Chứng Khoán Việt Nam",
-  "description": "Ứng dụng phân tích và lọc cổ phiếu thông minh sử dụng Gemini AI dành riêng cho thị trường chứng khoán Việt Nam.",
+  "name": "Hệ Thống Quản Lý Danh Mục Chứng Khoán AI",
+  "description": "Ứng dụng quản lý danh mục đầu tư thông minh, tích hợp phân tích AI Gemini và quản lý dữ liệu linh hoạt.",
   "requestFramePermissions": []
 }
