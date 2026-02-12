@@ -388,6 +388,15 @@ function doPost(e) {
     });
   };
 
+  const openBuyFromBrokerage = (brokerageName: string) => {
+    setTransactionForm({
+        ...INITIAL_TRANSACTION_FORM,
+        brokerage: brokerageName.toUpperCase(),
+        note: `Mua tại ${brokerageName.toUpperCase()}`
+    });
+    setShowBuyModal(true);
+  };
+
   const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#3b82f6'];
 
   const getThemeColorClass = (color: string) => {
@@ -560,6 +569,7 @@ function doPost(e) {
                    <BrokerageCard 
                     key={b.name} 
                     {...b} 
+                    onBuyNew={openBuyFromBrokerage}
                     onAction={(type, s) => {
                         setSelectedStock(s);
                         if (type === 'adjust') { setAdjustForm({ price: s.avgPrice.toString().replace('.', ',') }); setShowAdjustModal(true); }
@@ -694,7 +704,7 @@ const StatCard: React.FC<{ label: string; value: number; icon: React.ReactNode; 
   </div>
 );
 
-const BrokerageCard: React.FC<{ name: string; cash: number; netCapital: number; stocks: StockHolding[]; onAction: (type: string, s: StockHolding) => void }> = ({ name, cash, netCapital, stocks, onAction }) => {
+const BrokerageCard: React.FC<{ name: string; cash: number; netCapital: number; stocks: StockHolding[]; onAction: (type: string, s: StockHolding) => void; onBuyNew: (brokerage: string) => void }> = ({ name, cash, netCapital, stocks, onAction, onBuyNew }) => {
     const stockValue = stocks.reduce((acc, curr) => acc + (curr.quantity * curr.currentPrice), 0);
     const totalValue = cash + stockValue;
     const profit = totalValue - netCapital;
@@ -703,9 +713,26 @@ const BrokerageCard: React.FC<{ name: string; cash: number; netCapital: number; 
         <div className="bg-white dark:bg-slate-900/40 rounded-[3rem] overflow-hidden border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-2xl transition-all group glass-panel">
             <div className="p-10 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/10 flex flex-col lg:flex-row justify-between gap-8">
                 <div className="flex items-center gap-6">
-                    <div className="p-6 rounded-[2rem] bg-indigo-600 text-white shadow-2xl shadow-indigo-600/30 group-hover:scale-105 group-hover:-rotate-3 transition-transform"><Building2 size={36} /></div>
+                    <div className="p-6 rounded-[2rem] bg-indigo-600 text-white shadow-2xl shadow-indigo-600/30 group-hover:scale-105 group-hover:-rotate-3 transition-transform relative">
+                        <Building2 size={36} />
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); onBuyNew(name); }} 
+                            className="absolute -top-2 -right-2 p-2 bg-emerald-500 text-white rounded-full shadow-lg hover:bg-emerald-600 hover:scale-110 transition-all border-4 border-white dark:border-slate-900"
+                            title={`Mua mới tại ${name}`}
+                        >
+                            <Plus size={16} strokeWidth={4} />
+                        </button>
+                    </div>
                     <div>
-                        <h3 className="text-3xl font-black tracking-tighter uppercase">{name}</h3>
+                        <div className="flex items-center gap-4">
+                            <h3 className="text-3xl font-black tracking-tighter uppercase">{name}</h3>
+                            <button 
+                                onClick={() => onBuyNew(name)}
+                                className="px-4 py-2 bg-indigo-600/10 hover:bg-indigo-600 text-indigo-600 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
+                            >
+                                Mua mới
+                            </button>
+                        </div>
                         <div className="flex flex-wrap gap-3 mt-4">
                              <span className="text-[10px] font-black uppercase bg-indigo-500/10 dark:bg-indigo-500/5 px-4 py-2 rounded-xl text-indigo-500 flex items-center gap-2"><ArrowUpRight size={14} /> Vốn: {netCapital.toLocaleString('vi-VN')} đ</span>
                              <span className="text-[10px] font-black uppercase bg-emerald-500/10 dark:bg-emerald-500/5 px-4 py-2 rounded-xl text-emerald-600 flex items-center gap-2"><Wallet size={14} /> Tiền: {cash.toLocaleString('vi-VN')} đ</span>
