@@ -27,7 +27,23 @@ import {
   ArrowUpRight,
   ZapIcon,
   LayoutGrid,
-  Info
+  Info,
+  AlertCircle,
+  History,
+  Target,
+  ArrowRightLeft,
+  Percent,
+  Database,
+  Coins,
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  ShieldCheck,
+  LineChart,
+  Table as TableIcon,
+  ArrowUpRight as GainIcon,
+  ArrowDownRight as LossIcon,
+  BarChart3,
+  Tag
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import { StockHolding, Transaction, TransactionType, AIAnalysisResponse } from './types';
@@ -199,7 +215,6 @@ function doPost(e) {
 
   const stats = useMemo(() => {
     const stockValue = holdings.reduce((acc, curr) => acc + (curr.quantity * (curr.currentPrice || 0)), 0);
-    // FIX TS ERROR: Type assertion to number[] for Object.values
     const cashValues = Object.values(cashBalances) as number[];
     const totalCash = cashValues.reduce((a, b) => a + b, 0);
     const totalAssets = totalCash + stockValue;
@@ -410,6 +425,18 @@ function doPost(e) {
     return maps[color] || maps.indigo;
   };
 
+  const getTransactionIcon = (type: TransactionType) => {
+    switch (type) {
+      case 'BUY': return <ArrowDownToLine size={18} className="text-emerald-500" />;
+      case 'SELL': return <ArrowUpFromLine size={18} className="text-rose-500" />;
+      case 'DEPOSIT': return <Coins size={18} className="text-indigo-500" />;
+      case 'WITHDRAW': return <Wallet size={18} className="text-amber-500" />;
+      case 'DIVIDEND_CASH': return <Gift size={18} className="text-pink-500" />;
+      case 'DIVIDEND_STOCK': return <LayoutGrid size={18} className="text-blue-500" />;
+      default: return <ArrowRightLeft size={18} />;
+    }
+  };
+
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-[#020617] text-slate-900 dark:text-slate-100 transition-colors duration-300">
       <aside className="w-72 hidden lg:flex flex-col border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-[#020617] transition-all relative z-10 shrink-0">
@@ -430,9 +457,12 @@ function doPost(e) {
           <SidebarItem onClick={() => setShowSettings(true)} icon={<Settings size={20} />} label="Cài đặt Cloud" />
         </nav>
         <div className="p-8 border-t border-slate-100 dark:border-slate-800">
-          <div className="bg-slate-50 dark:bg-slate-900/50 rounded-3xl p-5 border border-slate-100 dark:border-slate-800">
-            <div className="text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Tiền mặt tổng</div>
-            <div className="text-xl font-black">{stats.totalCash.toLocaleString('vi-VN')} <span className="text-xs opacity-50">đ</span></div>
+          <div className="bg-slate-50 dark:bg-slate-900/50 rounded-3xl p-5 border border-slate-100 dark:border-slate-800 flex items-center gap-4">
+            <div className="p-3 bg-indigo-500/10 text-indigo-500 rounded-xl"><Coins size={20} /></div>
+            <div>
+                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tiền mặt tổng</div>
+                <div className="text-xl font-black">{stats.totalCash.toLocaleString('vi-VN')} <span className="text-xs opacity-50">đ</span></div>
+            </div>
           </div>
           <button 
             onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')} 
@@ -447,7 +477,10 @@ function doPost(e) {
         <div className="max-w-7xl mx-auto p-6 md:p-12 space-y-12 pb-32">
           <header className="flex flex-col md:flex-row md:items-center justify-between gap-8">
             <div>
-              <h2 className="text-4xl font-black tracking-tight">{currentView === 'dashboard' ? 'Tổng quan Đầu tư' : 'Quản lý Brokerages'}</h2>
+              <h2 className="text-4xl font-black tracking-tight flex items-center gap-4">
+                {currentView === 'dashboard' ? <LayoutDashboard size={40} className="text-indigo-500" /> : <Briefcase size={40} className="text-indigo-500" />}
+                {currentView === 'dashboard' ? 'Tổng quan Đầu tư' : 'Quản lý Brokerages'}
+              </h2>
               <p className="text-slate-500 text-sm mt-2 font-medium">{currentView === 'dashboard' ? 'Phân tích hiệu suất và cấu trúc danh mục thông minh.' : 'Theo dõi vốn nạp, tiền mặt và cổ phiếu tại từng sàn.'}</p>
             </div>
             <div className="flex items-center gap-4">
@@ -518,45 +551,53 @@ function doPost(e) {
                         </div>
                     ) : (
                         <div className="space-y-8 overflow-y-auto max-h-[500px] pr-2 custom-scrollbar">
-                             <div className="p-8 bg-indigo-600 rounded-[2.5rem] text-white shadow-xl">
-                                <div className="text-[10px] font-black uppercase opacity-70 mb-2 tracking-widest">Chỉ số rủi ro</div>
-                                <div className="text-6xl font-black">{aiAnalysis.riskScore}<span className="text-base opacity-50 ml-1">/10</span></div>
+                             <div className="p-8 bg-indigo-600 rounded-[2.5rem] text-white shadow-xl flex items-center justify-between">
+                                <div>
+                                    <div className="text-[10px] font-black uppercase opacity-70 mb-2 tracking-widest">Chỉ số rủi ro</div>
+                                    <div className="text-6xl font-black">{aiAnalysis.riskScore}<span className="text-base opacity-50 ml-1">/10</span></div>
+                                </div>
+                                <div className="p-4 bg-white/10 rounded-2xl"><ShieldCheck size={40} /></div>
                              </div>
-                             <AIBlock title="Phân tích giao dịch" content={aiAnalysis.tradeAnalysis} />
-                             <AIBlock title="Phân tích cấu trúc" content={aiAnalysis.assetAnalysis} />
-                             <AIBlock title="Chiến lược hành động" content={
+                             <AIBlock icon={<LineChart size={18} />} title="Phân tích giao dịch" content={aiAnalysis.tradeAnalysis} />
+                             <AIBlock icon={<PieIcon size={18} />} title="Phân tích cấu trúc" content={aiAnalysis.assetAnalysis} />
+                             <AIBlock icon={<Target size={18} />} title="Chiến lược hành động" content={
                                <div className="space-y-4">
                                  {aiAnalysis.recommendations.map((rec, idx) => (
                                    <div key={idx} className="flex gap-4 items-start group/rec">
-                                     <div className="w-2 h-2 rounded-full bg-indigo-500 shrink-0 mt-2.5 group-hover/rec:scale-150 transition-transform" />
+                                     <div className="w-6 h-6 rounded-lg bg-indigo-500/10 text-indigo-500 shrink-0 mt-0.5 flex items-center justify-center font-bold text-xs">{idx + 1}</div>
                                      <span className="font-medium text-slate-700 dark:text-slate-300">{rec}</span>
                                    </div>
                                  ))}
                                </div>
                              } />
-                             <button onClick={() => setAiAnalysis(null)} className="w-full p-5 rounded-2xl border-2 border-slate-100 dark:border-slate-800 text-[11px] font-black uppercase hover:bg-slate-50 dark:hover:bg-slate-800 transition-all tracking-widest">Làm mới tư vấn</button>
+                             <button onClick={() => setAiAnalysis(null)} className="w-full p-5 rounded-2xl border-2 border-slate-100 dark:border-slate-800 text-[11px] font-black uppercase hover:bg-slate-50 dark:hover:bg-slate-800 transition-all tracking-widest flex items-center justify-center gap-3">
+                                <History size={16} /> Làm mới tư vấn
+                             </button>
                         </div>
                     )}
                   </div>
                 </div>
               </div>
               <div className="bg-white dark:bg-slate-900/40 rounded-[3rem] p-10 border border-slate-200 dark:border-slate-800 shadow-sm glass-panel">
-                 <h3 className="text-xl font-black mb-8 uppercase tracking-tighter flex items-center gap-3 text-emerald-500"><Activity size={24} /> Giao dịch gần đây</h3>
+                 <h3 className="text-xl font-black mb-8 uppercase tracking-tighter flex items-center gap-3 text-emerald-500"><History size={24} /> Giao dịch gần đây</h3>
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {transactions.slice(0, 6).map(t => (
                         <div key={t.id} className="flex items-center justify-between p-6 rounded-[2rem] bg-slate-50 dark:bg-slate-800/30 border border-slate-100 dark:border-slate-800 hover:border-indigo-500/50 transition-all cursor-default">
                             <div className="flex items-center gap-5">
-                                <div className={`p-4 rounded-2xl ${t.type === 'BUY' ? 'bg-emerald-500/10 text-emerald-500' : t.type === 'SELL' ? 'bg-rose-500/10 text-rose-500' : 'bg-blue-500/10 text-blue-500'}`}>
-                                    {t.type === 'BUY' ? <Plus size={20} /> : t.type === 'SELL' ? <Minus size={20} /> : <Banknote size={20} />}
+                                <div className={`p-4 rounded-2xl bg-white dark:bg-slate-900 shadow-sm border border-slate-100 dark:border-slate-800`}>
+                                    {getTransactionIcon(t.type)}
                                 </div>
                                 <div>
-                                    <div className="font-black text-base">{t.symbol || t.type}</div>
+                                    <div className="font-black text-base flex items-center gap-2">
+                                        {t.symbol || t.type}
+                                        <span className="text-[10px] font-black text-slate-400 opacity-60">#{t.id.slice(-4)}</span>
+                                    </div>
                                     <div className="text-[11px] text-slate-400 font-bold uppercase tracking-wider">{t.date}</div>
                                 </div>
                             </div>
                             <div className="text-right">
                                 <div className="font-black text-base">{t.totalAmount.toLocaleString('vi-VN')} <span className="text-[10px] opacity-50">đ</span></div>
-                                <div className="text-[10px] text-indigo-500 font-black uppercase tracking-tighter">{t.brokerage}</div>
+                                <div className="text-[10px] text-indigo-500 font-black uppercase tracking-tighter flex items-center justify-end gap-1"><Building2 size={10} /> {t.brokerage}</div>
                             </div>
                         </div>
                     ))}
@@ -584,96 +625,119 @@ function doPost(e) {
       </main>
 
       {showBuyModal && (
-        <Modal title="Lệnh Mua Mới" onClose={() => setShowBuyModal(false)}>
+        <Modal icon={<Plus size={32} />} title="Lệnh Mua Mới" onClose={() => setShowBuyModal(false)}>
           <form onSubmit={handleBuy} className="space-y-8">
-            <Input label="Brokerage thực hiện" value={transactionForm.brokerage} onChange={handleBrokerageChange} placeholder="Ví dụ: VPS, SSI, TCBS..." required />
-            <Input label="Mã Cổ Phiếu" value={transactionForm.symbol} onChange={handleSymbolChange} placeholder="VD: HPG, FPT..." uppercase required />
-            <Input label="Ngành nghề" value={transactionForm.sector} onChange={v => setTransactionForm({...transactionForm, sector: v})} placeholder="VD: Tài chính, Bất động sản..." required />
+            <Input label="Brokerage thực hiện" icon={<Building2 size={20} />} value={transactionForm.brokerage} onChange={handleBrokerageChange} placeholder="Ví dụ: VPS, SSI, TCBS..." required />
+            <Input label="Mã Cổ Phiếu" icon={<Activity size={20} />} value={transactionForm.symbol} onChange={handleSymbolChange} placeholder="VD: HPG, FPT..." uppercase required />
+            <Input label="Ngành nghề" icon={<LayoutGrid size={20} />} value={transactionForm.sector} onChange={v => setTransactionForm({...transactionForm, sector: v})} placeholder="VD: Tài chính, Bất động sản..." required />
             <div className="grid grid-cols-2 gap-6">
-                <Input label="Số lượng" value={transactionForm.quantity} onChange={v => setTransactionForm({...transactionForm, quantity: v})} isNumeric required />
-                <Input label="Giá khớp (VNĐ)" value={transactionForm.price} onChange={v => setTransactionForm({...transactionForm, price: v})} isNumeric required />
+                <Input label="Số lượng" icon={<TableIcon size={20} />} value={transactionForm.quantity} onChange={v => setTransactionForm({...transactionForm, quantity: v})} isNumeric required />
+                <Input label="Giá khớp (VNĐ)" icon={<Banknote size={20} />} value={transactionForm.price} onChange={v => setTransactionForm({...transactionForm, price: v})} isNumeric required />
             </div>
-            <Input label="Phí dự kiến (%)" value={transactionForm.taxFeePercent} onChange={v => setTransactionForm({...transactionForm, taxFeePercent: v})} isNumeric />
-            <Input label="Ghi chú" value={transactionForm.note} onChange={v => setTransactionForm({...transactionForm, note: v})} placeholder="Ví dụ: Mua tại VND, mua theo tín hiệu..." />
-            <button type="submit" className="w-full bg-indigo-600 py-6 rounded-[1.5rem] font-black text-white hover:bg-indigo-700 shadow-2xl shadow-indigo-600/40 transition-all uppercase tracking-widest">Xác nhận mua</button>
+            <Input label="Phí dự kiến (%)" icon={<Percent size={20} />} value={transactionForm.taxFeePercent} onChange={v => setTransactionForm({...transactionForm, taxFeePercent: v})} isNumeric />
+            <Input label="Ghi chú" icon={<Edit3 size={20} />} value={transactionForm.note} onChange={v => setTransactionForm({...transactionForm, note: v})} placeholder="Ví dụ: Mua tại VND, mua theo tín hiệu..." />
+            <button type="submit" className="w-full bg-indigo-600 py-6 rounded-[1.5rem] font-black text-white hover:bg-indigo-700 shadow-2xl shadow-indigo-600/40 transition-all uppercase tracking-widest flex items-center justify-center gap-3">
+                <ShieldCheck size={20} /> Xác nhận mua
+            </button>
           </form>
         </Modal>
       )}
 
       {showSellModal && selectedStock && (
-         <Modal title={`Lệnh Bán: ${selectedStock.symbol}`} onClose={() => setShowSellModal(false)}>
+         <Modal icon={<Minus size={32} />} title={`Lệnh Bán: ${selectedStock.symbol}`} onClose={() => setShowSellModal(false)}>
             <form onSubmit={handleSell} className="space-y-8">
-                <div className="bg-slate-50 dark:bg-slate-900 p-6 rounded-3xl border border-dashed border-slate-200 dark:border-slate-800 text-sm italic text-slate-500">
-                    Bán cổ phiếu từ sàn <strong>{selectedStock.brokerage}</strong>. Khối lượng hiện có: {selectedStock.quantity.toLocaleString('vi-VN')}.
+                <div className="bg-slate-50 dark:bg-slate-900 p-6 rounded-3xl border border-dashed border-slate-200 dark:border-slate-800 text-sm italic text-slate-500 flex items-center gap-4">
+                    <Info size={24} className="text-indigo-500" />
+                    <div>Bán cổ phiếu từ sàn <strong>{selectedStock.brokerage}</strong>. Khối lượng hiện có: {selectedStock.quantity.toLocaleString('vi-VN')}.</div>
                 </div>
                 <div className="grid grid-cols-2 gap-6">
-                    <Input label="Số lượng bán" value={transactionForm.quantity} onChange={v => setTransactionForm({...transactionForm, quantity: v})} isNumeric required />
-                    <Input label="Giá bán (VNĐ)" value={transactionForm.price} onChange={v => setTransactionForm({...transactionForm, price: v})} isNumeric required />
+                    <Input label="Số lượng bán" icon={<TableIcon size={20} />} value={transactionForm.quantity} onChange={v => setTransactionForm({...transactionForm, quantity: v})} isNumeric required />
+                    <Input label="Giá bán (VNĐ)" icon={<Banknote size={20} />} value={transactionForm.price} onChange={v => setTransactionForm({...transactionForm, price: v})} isNumeric required />
                 </div>
-                <Input label="Thuế & Phí (%)" value={transactionForm.taxFeePercent} onChange={v => setTransactionForm({...transactionForm, taxFeePercent: v})} isNumeric />
-                <Input label="Ghi chú" value={transactionForm.note} onChange={v => setTransactionForm({...transactionForm, note: v})} placeholder="Ví dụ: Bán tại VND, chốt lời..." />
-                <button type="submit" className="w-full bg-rose-600 py-6 rounded-[1.5rem] font-black text-white hover:bg-rose-700 shadow-2xl shadow-rose-600/40 uppercase tracking-widest">Xác nhận bán</button>
+                <Input label="Thuế & Phí (%)" icon={<Percent size={20} />} value={transactionForm.taxFeePercent} onChange={v => setTransactionForm({...transactionForm, taxFeePercent: v})} isNumeric />
+                <Input label="Ghi chú" icon={<Edit3 size={20} />} value={transactionForm.note} onChange={v => setTransactionForm({...transactionForm, note: v})} placeholder="Ví dụ: Bán tại VND, chốt lời..." />
+                <button type="submit" className="w-full bg-rose-600 py-6 rounded-[1.5rem] font-black text-white hover:bg-rose-700 shadow-2xl shadow-rose-600/40 uppercase tracking-widest flex items-center justify-center gap-3">
+                    <ArrowUpFromLine size={20} /> Xác nhận bán
+                </button>
             </form>
          </Modal>
       )}
 
       {showCashModal && (
-        <Modal title="Quản lý Vốn nạp/rút" onClose={() => setShowCashModal(false)}>
+        <Modal icon={<Banknote size={32} />} title="Quản lý Vốn nạp/rút" onClose={() => setShowCashModal(false)}>
           <form onSubmit={handleCashAction} className="space-y-8">
-            <Input label="Tên Brokerage" value={cashActionForm.brokerage} onChange={v => setCashActionForm({...cashActionForm, brokerage: v})} placeholder="Nhập tên sàn giao dịch..." required />
+            <Input label="Tên Brokerage" icon={<Building2 size={20} />} value={cashActionForm.brokerage} onChange={v => setCashActionForm({...cashActionForm, brokerage: v})} placeholder="Nhập tên sàn giao dịch..." required />
             <div className="flex gap-4 p-2 bg-slate-50 dark:bg-slate-950 rounded-[2rem] border border-slate-100 dark:border-slate-800">
-                <button type="button" onClick={() => setCashActionForm({...cashActionForm, type: 'DEPOSIT'})} className={`flex-1 py-4 rounded-[1.5rem] font-black text-xs uppercase tracking-widest transition-all ${cashActionForm.type === 'DEPOSIT' ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-600/20' : 'text-slate-400'}`}>Nạp Vốn</button>
-                <button type="button" onClick={() => setCashActionForm({...cashActionForm, type: 'WITHDRAW'})} className={`flex-1 py-4 rounded-[1.5rem] font-black text-xs uppercase tracking-widest transition-all ${cashActionForm.type === 'WITHDRAW' ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-600/20' : 'text-slate-400'}`}>Rút Vốn</button>
+                <button type="button" onClick={() => setCashActionForm({...cashActionForm, type: 'DEPOSIT'})} className={`flex-1 py-4 rounded-[1.5rem] font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${cashActionForm.type === 'DEPOSIT' ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-600/20' : 'text-slate-400'}`}>
+                    <ArrowDownToLine size={16} /> Nạp Vốn
+                </button>
+                <button type="button" onClick={() => setCashActionForm({...cashActionForm, type: 'WITHDRAW'})} className={`flex-1 py-4 rounded-[1.5rem] font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${cashActionForm.type === 'WITHDRAW' ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-600/20' : 'text-slate-400'}`}>
+                    <ArrowUpFromLine size={16} /> Rút Vốn
+                </button>
             </div>
-            <Input label="Số tiền" value={cashActionForm.amount} onChange={v => setCashActionForm({...cashActionForm, amount: v})} isNumeric required />
-            <button type="submit" className="w-full bg-indigo-600 py-6 rounded-[1.5rem] font-black text-white hover:bg-indigo-700 transition-all shadow-xl uppercase tracking-widest">Xác nhận</button>
+            <Input label="Số tiền" icon={<Coins size={20} />} value={cashActionForm.amount} onChange={v => setCashActionForm({...cashActionForm, amount: v})} isNumeric required />
+            <button type="submit" className="w-full bg-indigo-600 py-6 rounded-[1.5rem] font-black text-white hover:bg-indigo-700 transition-all shadow-xl uppercase tracking-widest flex items-center justify-center gap-3">
+                <Check size={20} /> Xác nhận
+            </button>
           </form>
         </Modal>
       )}
 
       {showSettings && (
-        <Modal title="Kết nối Cloud" onClose={() => setShowSettings(false)} wide>
+        <Modal icon={<Database size={32} />} title="Kết nối Cloud" onClose={() => setShowSettings(false)} wide>
            <div className="space-y-8">
               <div className="bg-slate-950 p-8 rounded-[2.5rem] border border-slate-800 shadow-inner overflow-hidden">
                  <div className="flex justify-between items-center mb-6">
-                    <span className="text-[10px] font-black uppercase text-indigo-500 tracking-[0.2em]">Google Apps Script Code</span>
+                    <span className="text-[10px] font-black uppercase text-indigo-500 tracking-[0.2em] flex items-center gap-2">
+                        <LineChart size={14} /> Google Apps Script Code
+                    </span>
                     <button onClick={() => { navigator.clipboard.writeText(GAS_CODE); setIsCopied(true); setTimeout(() => setIsCopied(false), 2000); }} className="text-xs text-white bg-slate-800 px-4 py-2 rounded-xl flex items-center gap-2 hover:bg-slate-700 transition-colors">
                         {isCopied ? <><Check size={14}/> Đã sao chép</> : <><Copy size={14}/> Sao chép mã</>}
                     </button>
                  </div>
                  <pre className="text-[10px] text-slate-500 font-mono overflow-auto max-h-60 leading-relaxed custom-scrollbar bg-slate-900 p-4 rounded-xl border border-slate-800"><code>{GAS_CODE}</code></pre>
               </div>
-              <Input label="WebApp URL" value={scriptUrl} onChange={setScriptUrl} placeholder="https://script.google.com/macros/s/.../exec" />
+              <Input label="WebApp URL" icon={<CloudDownload size={20} />} value={scriptUrl} onChange={setScriptUrl} placeholder="https://script.google.com/macros/s/.../exec" />
               <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex gap-3 text-xs text-amber-600 italic">
                 <Info size={16} className="shrink-0" /> Dán URL mới từ phần Triển khai (Deploy) để đồng bộ.
               </div>
-              <button onClick={() => { localStorage.setItem('google_script_url', scriptUrl); setShowSettings(false); fetchFromSheets(); }} className="w-full py-6 bg-indigo-600 text-white font-black rounded-[1.5rem] hover:bg-indigo-700 shadow-2xl transition-all uppercase tracking-widest">Lưu cấu hình</button>
+              <button onClick={() => { localStorage.setItem('google_script_url', scriptUrl); setShowSettings(false); fetchFromSheets(); }} className="w-full py-6 bg-indigo-600 text-white font-black rounded-[1.5rem] hover:bg-indigo-700 shadow-2xl transition-all uppercase tracking-widest flex items-center justify-center gap-3">
+                <CloudDownload size={20} /> Lưu cấu hình
+              </button>
            </div>
         </Modal>
       )}
 
       {showAdjustModal && selectedStock && (
-        <Modal title="Điều chỉnh Giá Vốn" onClose={() => setShowAdjustModal(false)}>
+        <Modal icon={<Edit3 size={32} />} title="Điều chỉnh Giá Vốn" onClose={() => setShowAdjustModal(false)}>
             <form onSubmit={handleAdjustPrice} className="space-y-8">
-                <Input label="Giá vốn mới (VNĐ)" value={adjustForm.price} onChange={v => setAdjustForm({price: v})} isNumeric required />
-                <button type="submit" className="w-full bg-amber-500 py-6 rounded-[1.5rem] font-black text-white hover:bg-amber-600 shadow-xl transition-all uppercase tracking-widest">Cập nhật</button>
+                <Input label="Giá vốn mới (VNĐ)" icon={<Banknote size={20} />} value={adjustForm.price} onChange={v => setAdjustForm({price: v})} isNumeric required />
+                <button type="submit" className="w-full bg-amber-500 py-6 rounded-[1.5rem] font-black text-white hover:bg-amber-600 shadow-xl transition-all uppercase tracking-widest flex items-center justify-center gap-3">
+                    <Check size={20} /> Cập nhật
+                </button>
             </form>
         </Modal>
       )}
 
       {showDividendModal && selectedStock && (
-        <Modal title={`Cổ tức: ${selectedStock.symbol}`} onClose={() => setShowDividendModal(false)}>
+        <Modal icon={<Gift size={32} />} title={`Cổ tức: ${selectedStock.symbol}`} onClose={() => setShowDividendModal(false)}>
             <form onSubmit={handleDividend} className="space-y-8">
                 <div className="flex gap-4 p-2 bg-slate-50 dark:bg-slate-950 rounded-[2rem] border border-slate-100 dark:border-slate-800">
-                    <button type="button" onClick={() => setDividendForm({...dividendForm, type: 'DIVIDEND_CASH'})} className={`flex-1 py-4 rounded-[1.5rem] font-black text-xs uppercase tracking-widest transition-all ${dividendForm.type === 'DIVIDEND_CASH' ? 'bg-indigo-600 text-white shadow-xl' : 'text-slate-400'}`}>Tiền Mặt</button>
-                    <button type="button" onClick={() => setDividendForm({...dividendForm, type: 'DIVIDEND_STOCK'})} className={`flex-1 py-4 rounded-[1.5rem] font-black text-xs uppercase tracking-widest transition-all ${dividendForm.type === 'DIVIDEND_STOCK' ? 'bg-indigo-600 text-white shadow-xl' : 'text-slate-400'}`}>Cổ Phiếu</button>
+                    <button type="button" onClick={() => setDividendForm({...dividendForm, type: 'DIVIDEND_CASH'})} className={`flex-1 py-4 rounded-[1.5rem] font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${dividendForm.type === 'DIVIDEND_CASH' ? 'bg-indigo-600 text-white shadow-xl' : 'text-slate-400'}`}>
+                        <Coins size={16} /> Tiền Mặt
+                    </button>
+                    <button type="button" onClick={() => setDividendForm({...dividendForm, type: 'DIVIDEND_STOCK'})} className={`flex-1 py-4 rounded-[1.5rem] font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${dividendForm.type === 'DIVIDEND_STOCK' ? 'bg-indigo-600 text-white shadow-xl' : 'text-slate-400'}`}>
+                        <LayoutGrid size={16} /> Cổ Phiếu
+                    </button>
                 </div>
                 {dividendForm.type === 'DIVIDEND_CASH' ? (
-                    <Input label="Số tiền mặt/CP" value={dividendForm.amountPerShare} onChange={v => setDividendForm({...dividendForm, amountPerShare: v})} isNumeric required />
+                    <Input label="Số tiền mặt/CP" icon={<Banknote size={20} />} value={dividendForm.amountPerShare} onChange={v => setDividendForm({...dividendForm, amountPerShare: v})} isNumeric required />
                 ) : (
-                    <Input label="Tỉ lệ thưởng (%)" value={dividendForm.stockRatio} onChange={v => setDividendForm({...dividendForm, stockRatio: v})} isNumeric required />
+                    <Input label="Tỉ lệ thưởng (%)" icon={<Percent size={20} />} value={dividendForm.stockRatio} onChange={v => setDividendForm({...dividendForm, stockRatio: v})} isNumeric required />
                 )}
-                <button type="submit" className="w-full bg-indigo-600 py-6 rounded-[1.5rem] font-black text-white hover:bg-indigo-700 transition-all uppercase tracking-widest">Xác nhận</button>
+                <button type="submit" className="w-full bg-indigo-600 py-6 rounded-[1.5rem] font-black text-white hover:bg-indigo-700 transition-all uppercase tracking-widest flex items-center justify-center gap-3">
+                    <Check size={20} /> Xác nhận
+                </button>
             </form>
         </Modal>
       )}
@@ -725,22 +789,22 @@ const BrokerageCard: React.FC<{ name: string; cash: number; netCapital: number; 
                     </div>
                     <div>
                         <div className="flex items-center gap-4">
-                            <h3 className="text-3xl font-black tracking-tighter uppercase">{name}</h3>
+                            <h3 className="text-3xl font-black tracking-tighter uppercase flex items-center gap-2">{name} <Info size={16} className="text-slate-400" /></h3>
                             <button 
                                 onClick={() => onBuyNew(name)}
-                                className="px-4 py-2 bg-indigo-600/10 hover:bg-indigo-600 text-indigo-600 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
+                                className="px-4 py-2 bg-indigo-600/10 hover:bg-indigo-600 text-indigo-600 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2"
                             >
-                                Mua mới
+                                <Plus size={12} /> Mua mới
                             </button>
                         </div>
                         <div className="flex flex-wrap gap-3 mt-4">
                              <span className="text-[10px] font-black uppercase bg-indigo-500/10 dark:bg-indigo-500/5 px-4 py-2 rounded-xl text-indigo-500 flex items-center gap-2"><ArrowUpRight size={14} /> Vốn: {netCapital.toLocaleString('vi-VN')} đ</span>
-                             <span className="text-[10px] font-black uppercase bg-emerald-500/10 dark:bg-emerald-500/5 px-4 py-2 rounded-xl text-emerald-600 flex items-center gap-2"><Wallet size={14} /> Tiền: {cash.toLocaleString('vi-VN')} đ</span>
+                             <span className="text-[10px] font-black uppercase bg-emerald-500/10 dark:bg-emerald-500/5 px-4 py-2 rounded-xl text-emerald-600 flex items-center gap-2"><Coins size={14} /> Tiền: {cash.toLocaleString('vi-VN')} đ</span>
                         </div>
                     </div>
                 </div>
                 <div className="lg:text-right">
-                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Tài sản sàn</div>
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 flex items-center lg:justify-end gap-1"><Wallet size={12} /> Tài sản sàn</div>
                     <div className="text-4xl font-black tracking-tight mb-3">{totalValue.toLocaleString('vi-VN')} <span className="text-sm font-bold opacity-40">đ</span></div>
                     <div className={`text-xs font-black px-5 py-2.5 rounded-2xl inline-flex items-center gap-2 ${profit >= 0 ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'}`}>
                         {profit >= 0 ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
@@ -753,10 +817,10 @@ const BrokerageCard: React.FC<{ name: string; cash: number; netCapital: number; 
                     <table className="w-full text-left border-collapse">
                         <thead className="text-[10px] font-black text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em] border-b border-slate-100 dark:border-slate-800">
                             <tr>
-                                <th className="px-10 py-6">Mã Cổ Phiếu</th>
-                                <th className="px-6 py-6 text-right">Khối lượng</th>
-                                <th className="px-6 py-6 text-right">Vốn / Hiện tại</th>
-                                <th className="px-6 py-6 text-right">Lãi dự tính</th>
+                                <th className="px-10 py-6 flex items-center gap-2"><Activity size={12} /> Mã Cổ Phiếu</th>
+                                <th className="px-6 py-6 text-right"><TableIcon size={12} className="inline mr-1" /> Khối lượng</th>
+                                <th className="px-6 py-6 text-right"><Banknote size={12} className="inline mr-1" /> Vốn / Hiện tại</th>
+                                <th className="px-6 py-6 text-right"><LineChart size={12} className="inline mr-1" /> Lãi dự tính</th>
                                 <th className="px-10 py-6"></th>
                             </tr>
                         </thead>
@@ -764,20 +828,61 @@ const BrokerageCard: React.FC<{ name: string; cash: number; netCapital: number; 
                             {stocks.map(s => {
                                 const gain = (s.currentPrice - s.avgPrice) * s.quantity;
                                 const gainPP = s.avgPrice > 0 ? ((s.currentPrice - s.avgPrice) / s.avgPrice) * 100 : 0;
+                                
+                                // LOGIC MÀU SẮC MÃ CỔ PHIẾU
+                                let symbolColorClass = "text-indigo-600 dark:text-indigo-400"; // Mặc định
+                                let bgColorClass = "bg-indigo-500/10";
+                                if (gainPP < -7) {
+                                  symbolColorClass = "text-red-600 dark:text-red-500";
+                                  bgColorClass = "bg-red-500/10";
+                                } else if (gainPP < 0) {
+                                  symbolColorClass = "text-amber-500 dark:text-amber-400";
+                                  bgColorClass = "bg-amber-500/10";
+                                } else if (gainPP < 7) {
+                                  symbolColorClass = "text-emerald-500 dark:text-emerald-400";
+                                  bgColorClass = "bg-emerald-500/10";
+                                } else if (gainPP >= 7) {
+                                  symbolColorClass = "text-purple-600 dark:text-purple-400";
+                                  bgColorClass = "bg-purple-500/10";
+                                }
+
                                 return (
                                     <tr key={s.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition-colors group/row">
                                         <td className="px-10 py-8">
-                                            <div className="font-black text-3xl text-indigo-600 dark:text-indigo-400 tracking-tighter italic">{s.symbol}</div>
-                                            <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{s.sector}</div>
+                                            <div className="flex items-center gap-4">
+                                                <div className={`p-4 rounded-2xl ${bgColorClass} ${symbolColorClass} shadow-inner group-hover/row:scale-110 transition-transform`}>
+                                                    {gainPP >= 0 ? <GainIcon size={24} /> : <LossIcon size={24} />}
+                                                </div>
+                                                <div>
+                                                    <div className="flex items-center gap-2">
+                                                        <div className={`font-black text-3xl tracking-tighter italic ${symbolColorClass}`}>
+                                                        {s.symbol}
+                                                        </div>
+                                                        {gainPP < -7 && (
+                                                        <span title="Cảnh báo: Lỗ vượt ngưỡng 7%">
+                                                            <AlertCircle size={20} className="text-red-500 animate-pulse shrink-0" />
+                                                        </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1 mt-1">
+                                                        <Tag size={10} className="opacity-60" /> {s.sector}
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </td>
                                         <td className="px-6 py-8 text-right font-mono font-black text-2xl">{s.quantity.toLocaleString('vi-VN')}</td>
                                         <td className="px-6 py-8 text-right">
-                                            <div className="text-[11px] font-bold text-slate-400 mb-1">Vốn: {s.avgPrice.toLocaleString('vi-VN')}</div>
-                                            <div className="text-xl font-black text-slate-800 dark:text-slate-100">HT: {s.currentPrice.toLocaleString('vi-VN')}</div>
+                                            <div className="text-[11px] font-bold text-slate-400 mb-1 flex items-center justify-end gap-1"><ArrowDownToLine size={10} /> Vốn: {s.avgPrice.toLocaleString('vi-VN')}</div>
+                                            <div className="text-xl font-black text-slate-800 dark:text-slate-100 flex items-center justify-end gap-1"><ArrowUpFromLine size={14} /> HT: {s.currentPrice.toLocaleString('vi-VN')}</div>
                                         </td>
                                         <td className={`px-6 py-8 text-right font-black ${gain >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-                                            <div className="text-2xl">{gain >= 0 ? '+' : ''}{gain.toLocaleString('vi-VN')}</div>
-                                            <div className="text-[11px] font-black opacity-80 uppercase tracking-tighter">{gainPP.toFixed(2)}%</div>
+                                            <div className="flex flex-col items-end">
+                                                <div className="text-2xl flex items-center gap-2">
+                                                    {gain >= 0 ? <TrendingUp size={18} /> : <TrendingDown size={18} />}
+                                                    {gain.toLocaleString('vi-VN')}
+                                                </div>
+                                                <div className="text-[11px] font-black opacity-80 uppercase tracking-tighter bg-current/10 px-2 py-0.5 rounded-lg">{gainPP.toFixed(2)}%</div>
+                                            </div>
                                         </td>
                                         <td className="px-10 py-8 text-right">
                                             <div className="flex gap-3 justify-end opacity-0 group-hover/row:opacity-100 transition-all">
@@ -793,26 +898,33 @@ const BrokerageCard: React.FC<{ name: string; cash: number; netCapital: number; 
                     </table>
                 </div>
             ) : (
-                <div className="p-16 text-center text-slate-400 italic text-sm font-medium">Trống</div>
+                <div className="p-16 text-center text-slate-400 italic text-sm font-medium flex flex-col items-center gap-4">
+                    <BarChart3 size={40} className="opacity-20" /> Trống
+                </div>
             )}
         </div>
     );
 };
 
-const AIBlock: React.FC<{ title: string; content: React.ReactNode }> = ({ title, content }) => (
+const AIBlock: React.FC<{ title: string; content: React.ReactNode; icon?: React.ReactNode }> = ({ title, content, icon }) => (
     <div className="space-y-3">
-        <h4 className="text-[11px] font-black uppercase text-indigo-500 tracking-[0.2em] flex items-center gap-2"><ChevronRight size={14} className="animate-pulse"/> {title}</h4>
+        <h4 className="text-[11px] font-black uppercase text-indigo-500 tracking-[0.2em] flex items-center gap-2">
+            {icon || <ChevronRight size={14} className="animate-pulse"/>} {title}
+        </h4>
         <div className="p-6 rounded-[2rem] bg-white dark:bg-slate-950 border border-slate-100 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400 leading-relaxed italic shadow-inner">
           {content}
         </div>
     </div>
 );
 
-const Modal: React.FC<{ title: string; children: React.ReactNode; onClose: () => void; wide?: boolean }> = ({ title, children, onClose, wide }) => (
+const Modal: React.FC<{ title: string; children: React.ReactNode; onClose: () => void; wide?: boolean; icon?: React.ReactNode }> = ({ title, children, onClose, wide, icon }) => (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-slate-950/90 backdrop-blur-xl animate-in fade-in duration-500">
         <div className={`bg-white dark:bg-[#0f172a] w-full ${wide ? 'max-w-5xl' : 'max-w-2xl'} p-12 rounded-[3.5rem] border border-slate-200 dark:border-slate-800 relative shadow-2xl animate-in zoom-in-95 duration-500 max-h-[92vh] overflow-y-auto custom-scrollbar`}>
             <button onClick={onClose} className="absolute top-12 right-12 p-3 text-slate-400 hover:text-rose-500 transition-all hover:rotate-90"><X size={28} /></button>
-            <h3 className="text-4xl font-black mb-12 tracking-tighter uppercase italic">{title}</h3>
+            <div className="flex items-center gap-6 mb-12">
+                {icon && <div className="p-5 bg-indigo-600 rounded-3xl text-white shadow-xl">{icon}</div>}
+                <h3 className="text-4xl font-black tracking-tighter uppercase italic">{title}</h3>
+            </div>
             {children}
         </div>
     </div>
@@ -826,7 +938,8 @@ const Input: React.FC<{
   required?: boolean; 
   uppercase?: boolean;
   isNumeric?: boolean;
-}> = ({ label, value, onChange, placeholder, required, uppercase, isNumeric }) => {
+  icon?: React.ReactNode;
+}> = ({ label, value, onChange, placeholder, required, uppercase, isNumeric, icon }) => {
     const displayValue = useMemo(() => {
         if (!value) return '';
         if (!isNumeric) return value;
@@ -852,7 +965,9 @@ const Input: React.FC<{
 
     return (
         <div className="space-y-3 group">
-            <label className="text-[11px] font-black text-slate-400 dark:text-slate-500 group-focus-within:text-indigo-500 uppercase tracking-widest px-2 transition-colors">{label}</label>
+            <label className="text-[11px] font-black text-slate-400 dark:text-slate-500 group-focus-within:text-indigo-500 uppercase tracking-widest px-2 transition-colors flex items-center gap-2">
+                {icon} {label}
+            </label>
             <div className="relative">
                 <input 
                     type="text" 
