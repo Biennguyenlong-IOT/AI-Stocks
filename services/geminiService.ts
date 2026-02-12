@@ -6,7 +6,7 @@ export const analyzePortfolio = async (
   transactions: Transaction[],
   stats: { totalAssets: number; totalCash: number; totalProfit: number; profitPercent: number }
 ): Promise<AIAnalysisResponse> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
   const model = "gemini-3-flash-preview";
   
   // Tính toán tỷ trọng mã để AI thấy được mức độ tập trung vốn
