@@ -54,7 +54,7 @@ import {
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import { StockHolding, Transaction, TransactionType, AIAnalysisResponse } from './types';
-import { analyzePortfolio, searchStockTrend, StockTrendAnalysis, getLatestPrices } from './services/geminiService';
+import { analyzePortfolio, searchStockTrend, StockTrendAnalysis } from './services/geminiService';
 
 const HARDCODED_URL = ""; 
 
@@ -104,7 +104,155 @@ const App: React.FC = () => {
   const [trendResult, setTrendResult] = useState<StockTrendAnalysis | null>(null);
   const [isSearchingTrend, setIsSearchingTrend] = useState(false);
 
-  const GAS_CODE = `/* Mã Google Apps Script */`;
+  const GAS_CODE = `function doGet(e) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var dataSheet = ss.getSheetByName("APP_DATA") || ss.insertSheet("APP_DATA");
+  var values = dataSheet.getDataRange().getValues();
+  var state = { totalCash: 0, cashBalances: {}, holdings: [], transactions: [] };
+  var section = "";
+  
+  for (var i = 0; i < values.length; i++) {
+    var row = values[i];
+    if (row[0] === "CASH_BALANCES") {
+       try { state.cashBalances = JSON.parse(row[1]); } catch(e) { state.cashBalances = {}; }
+       state.totalCash = Object.values(state.cashBalances).reduce((a, b) => a + b, 0);
+    }
+    else if (row[0] === "--- HOLDINGS ---") { section = "HOLDINGS"; i++; continue; }
+    else if (row[0] === "--- TRANSACTIONS ---") { section = "TRANSACTIONS"; i++; continue; }
+    
+    if (section === "HOLDINGS" && row[0] && row[0] !== "ID") {
+      state.holdings.push({ 
+        id: row[0].toString(), symbol: row[1], name: row[2], quantity: parseFloat(row[3]), 
+        avgPrice: parseFloat(row[4]), currentPrice: parseFloat(row[5]), sector: row[6], brokerage: row[7] || "CHƯA RÕ"
+      });
+    } else if (section === "TRANSACTIONS" && row[0] && row[0] !== "ID") {
+      state.transactions.push({ 
+        id: row[0].toString(), date: row[1], type: row[2], symbol: row[3], 
+        quantity: parseFloat(row[4]), price: parseFloat(row[5]), taxFee: parseFloat(row[6]), 
+        totalAmount: parseFloat(row[7]), note: row[8], brokerage: row[9] || "CHƯA RÕ"
+      });
+    }
+  }
+
+  var viewSheet = ss.getSheetByName("DANH_MUC");
+  if (viewSheet && state.holdings.length > 0) {
+    var viewData = viewSheet.getDataRange().getValues();
+    for (var i = 0; i < state.holdings.length; i++) {
+      var symbol = state.holdings[i].symbol;
+      var brokerage = state.holdings[i].brokerage;
+      for (var j = 1; j < viewData.length; j++) {
+        if (viewData[j][0] == symbol && viewData[j][6] == brokerage) {
+          var price = parseFloat(viewData[j][3]);
+          if (!isNaN(price) && price > 0) state.holdings[i].currentPrice = price;
+          break;
+        }
+      }
+    }
+  }
+
+  return ContentService.createTextOutput(JSON.stringify(state)).setMimeType(ContentService.MimeType.JSON);
+}
+
+function doPost(e) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var postData = JSON.parse(e.postData.contents);
+
+  // Kích hoạt hàm cập nhật giá Pro
+  if (postData.action === "updatePricesFromWebAndSync_Pro") {
+    updatePricesFromWebAndSync_Pro();
+    return ContentService.createTextOutput(JSON.stringify({status: "success"})).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  var state = postData;
+  var dataSheet = ss.getSheetByName("APP_DATA") || ss.insertSheet("APP_DATA");
+  dataSheet.clear();
+  
+  dataSheet.getRange("A1").setValue("CASH_BALANCES");
+  dataSheet.getRange("B1").setValue(JSON.stringify(state.cashBalances || {}));
+  
+  dataSheet.getRange("A3").setValue("--- HOLDINGS ---");
+  var hHeaders = ["ID", "Mã CP", "Tên", "Số lượng", "Giá vốn", "Giá hiện tại", "Ngành", "Công ty CK"];
+  dataSheet.getRange(4, 1, 1, hHeaders.length).setValues([hHeaders]);
+  
+  if (state.holdings && state.holdings.length > 0) {
+    var hData = state.holdings.map(function(h) {
+     return [h.id, h.symbol, h.name, h.quantity, h.avgPrice, h.currentPrice, h.sector, h.brokerage]; 
+    });
+    dataSheet.getRange(5, 1, hData.length, hHeaders.length).setValues(hData);
+  }
+  
+  var tStartRow = (state.holdings ? state.holdings.length : 0) + 7;
+  dataSheet.getRange(tStartRow, 1).setValue("--- TRANSACTIONS ---");
+  var tHeaders = ["ID", "Ngày", "Loại", "Mã", "SL", "Giá", "Phí", "Tổng", "Ghi chú", "Công ty CK"];
+  dataSheet.getRange(tStartRow + 1, 1, 1, tHeaders.length).setValues([tHeaders]);
+  
+  if (state.transactions && state.transactions.length > 0) {
+    var tData = state.transactions.map(function(t) { 
+      return [t.id, t.date, t.type, t.symbol || "", t.quantity || 0, t.price || 0, t.taxFee, t.totalAmount, t.note || "", t.brokerage || ""]; 
+    });
+    dataSheet.getRange(tStartRow + 2, 1, tData.length, tHeaders.length).setValues(tData);
+  }
+
+  var viewSheet = ss.getSheetByName("DANH_MUC") || ss.insertSheet("DANH_MUC");
+  viewSheet.clear();
+  viewSheet.appendRow(["MÃ CP", "SỐ LƯỢNG", "GIÁ VỐN", "GIÁ HIỆN TẠI", "NGÀNH", "TỔNG VỐN", "CÔNG TY CK"]);
+  if (state.holdings && state.holdings.length > 0) {
+    state.holdings.forEach(function(item, index) {
+      var row = index + 2;
+      var pForm = '=IFERROR(SUBSTITUTE(IMPORTXML("https://www.cophieu68.vn/quote/profile.php?id=' + item.symbol + '"; "//*[@id=\\'stockname_close\\']"); "."; ",")*1000; 0)';
+      var sForm = '=IFERROR(IMPORTXML("https://www.cophieu68.vn/quote/profile.php?id=' + item.symbol + '"; "//tr[contains(@class,\\'border_bottom\\')]/td[contains(text(),\\'CTCP\\')]"); "Chưa rõ")';
+      viewSheet.appendRow([item.symbol, item.quantity, item.avgPrice, pForm, sForm, "=B" + row + "*C" + row, item.brokerage]);
+    });
+  }
+  
+  return ContentService.createTextOutput(JSON.stringify({status: "success"})).setMimeType(ContentService.MimeType.JSON);
+}
+
+function updatePricesFromWebAndSync_Pro() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var viewSheet = ss.getSheetByName("DANH_MUC");
+  var dataSheet = ss.getSheetByName("APP_DATA");
+  if (!viewSheet || !dataSheet) return;
+  var lastRow = viewSheet.getLastRow();
+  if (lastRow < 2) return;
+  var viewData = viewSheet.getRange(2, 1, lastRow - 1, 7).getValues();
+  var priceMap = {};
+  for (var i = 0; i < viewData.length; i++) {
+    var symbol = viewData[i][0];
+    var brokerage = viewData[i][6];
+    if (!symbol) continue;
+    try {
+      var url = (symbol === "VNINDEX") ? "https://www.cophieu68.vn/index/1" : (symbol === "HNXINDEX") ? "https://www.cophieu68.vn/index/2" : "https://www.cophieu68.vn/quote/profile.php?id=" + symbol;
+      var html = UrlFetchApp.fetch(url, { muteHttpExceptions: true }).getContentText("UTF-8");
+      var price = extractPrice(html);
+      if (!isNaN(price)) {
+        priceMap[symbol + "_" + brokerage] = price;
+        viewSheet.getRange(i + 2, 4).setValue(price*10); 
+      }
+    } catch (err) { Logger.log(err); }
+    Utilities.sleep(1000); 
+  }
+  var dataValues = dataSheet.getDataRange().getValues();
+  var section = "";
+  for (var r = 0; r < dataValues.length; r++) {
+    if (dataValues[r][0] === "--- HOLDINGS ---") { section = "HOLDINGS"; r++; continue; }
+    if (dataValues[r][0] === "--- TRANSACTIONS ---") break;
+    if (section === "HOLDINGS" && dataValues[r][0] && dataValues[r][0] !== "ID") {
+      var sym = dataValues[r][1];
+      var brok = dataValues[r][7];
+      if (priceMap[sym + "_" + brok]) dataSheet.getRange(r + 1, 6).setValue(priceMap[sym + "_" + brok]*10);
+    }
+  }
+}
+
+function extractPrice(html) {
+  var regexList = [/id=["']stockname_close["'][^>]*>([^<]+)/i, /class=["']stock_price["'][^>]*>([^<]+)/i];
+  for (var i = 0; i < regexList.length; i++) {
+    var match = html.match(regexList[i]);
+    if (match && match[1]) return parseFloat(match[1].replace(/\\./g, "").replace(",", ".").trim());
+  }
+  return NaN;
+}`;
 
   useEffect(() => {
     const root = window.document.documentElement;
@@ -194,21 +342,25 @@ const App: React.FC = () => {
   };
 
   const handleRefreshPrices = async () => {
-    if (holdings.length === 0) return;
+    const url = scriptUrl.trim();
+    if (!url || !url.includes('/exec')) return alert("Vui lòng cấu hình WebApp URL trong phần Cài đặt.");
+    
     setIsRefreshingPrices(true);
-    // Explicitly cast the unique symbols set to string[] to resolve the 'unknown[]' type mismatch error
-    const symbols = Array.from(new Set(holdings.map(h => h.symbol))) as string[];
     try {
-      const newPrices = await getLatestPrices(symbols);
-      const updatedHoldings = holdings.map(h => ({
-        ...h,
-        currentPrice: newPrices[h.symbol] || h.currentPrice
-      }));
-      setHoldings(updatedHoldings);
-      pushToSheets({ holdings: updatedHoldings, transactions, cashBalances });
+      await fetch(url, { 
+        method: 'POST', 
+        mode: 'no-cors', 
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'updatePricesFromWebAndSync_Pro' }) 
+      });
+      
+      setTimeout(() => {
+        fetchFromSheets();
+        setIsRefreshingPrices(false);
+      }, 10000);
     } catch (e) {
-      alert("Không thể cập nhật giá hiện tại từ AI.");
-    } finally {
+      console.error("Refresh Prices Error", e);
+      alert("Lỗi khi kết nối với Google Apps Script.");
       setIsRefreshingPrices(false);
     }
   };
@@ -404,11 +556,13 @@ const App: React.FC = () => {
         </div>
         {navItems}
         <div className="p-8 border-t border-slate-100 dark:border-slate-800">
-          <div className="bg-slate-50 dark:bg-slate-900/50 rounded-3xl p-5 border border-slate-100 dark:border-slate-800 flex items-center gap-4">
-            <div className="p-3 bg-indigo-500/10 text-indigo-500 rounded-xl"><Coins size={20} /></div>
-            <div>
-                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tiền mặt tổng</div>
-                <div className="text-xl font-black">{stats.totalCash.toLocaleString('vi-VN')} <span className="text-xs opacity-50">đ</span></div>
+          <div className="bg-slate-50 dark:bg-slate-900/50 rounded-3xl p-5 border border-slate-100 dark:border-slate-800 flex items-center gap-3 md:gap-4 overflow-hidden">
+            <div className="p-3 bg-indigo-500/10 text-indigo-500 rounded-xl shrink-0"><Coins size={20} /></div>
+            <div className="min-w-0">
+                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest truncate">Tiền mặt tổng</div>
+                <div className="text-base md:text-lg font-black tracking-tight flex flex-wrap items-baseline gap-1 tabular-nums break-all">
+                  {stats.totalCash.toLocaleString('vi-VN')} <span className="text-[10px] opacity-50 font-medium">đ</span>
+                </div>
             </div>
           </div>
           <button 
@@ -433,8 +587,8 @@ const App: React.FC = () => {
             </div>
             {navItems}
             <div className="p-8 mt-auto border-t border-slate-100 dark:border-slate-800">
-              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Tiền mặt tổng</div>
-              <div className="text-xl font-black mb-4">{stats.totalCash.toLocaleString('vi-VN')} đ</div>
+              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 truncate">Tiền mặt tổng</div>
+              <div className="text-lg font-black mb-4 tabular-nums break-all">{stats.totalCash.toLocaleString('vi-VN')} đ</div>
               <button 
                 onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')} 
                 className="w-full flex items-center justify-center gap-3 p-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-sm font-bold"
@@ -469,7 +623,7 @@ const App: React.FC = () => {
                 <div className="flex flex-col sm:flex-row items-center gap-4">
                   <button 
                     onClick={handleRefreshPrices} 
-                    disabled={isRefreshingPrices || holdings.length === 0}
+                    disabled={isRefreshingPrices}
                     className="w-full sm:w-auto flex items-center justify-center gap-3 px-6 py-3 md:py-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl font-bold hover:bg-slate-50 dark:hover:bg-slate-800 shadow-sm active:scale-95 disabled:opacity-50"
                   >
                       {isRefreshingPrices ? <Loader2 size={20} className="animate-spin" /> : <RefreshCw size={20} />} Cập nhật giá AI
@@ -750,6 +904,9 @@ const App: React.FC = () => {
                  </div>
                  <pre className="text-[9px] text-slate-500 font-mono overflow-auto max-h-40 leading-relaxed custom-scrollbar bg-slate-900 p-3 rounded-xl"><code>{GAS_CODE}</code></pre>
               </div>
+              <div className="p-4 bg-indigo-500/10 border border-indigo-500/20 rounded-xl text-[10px] text-indigo-500 font-medium italic">
+                Nút "Cập nhật giá AI" sẽ kích hoạt hàm updatePricesFromWebAndSync_Pro trong script của bạn.
+              </div>
               <Input label="WebApp URL" icon={<CloudDownload size={18} />} value={scriptUrl} onChange={setScriptUrl} placeholder="https://..." />
               <button onClick={() => { localStorage.setItem('google_script_url', scriptUrl); setShowSettings(false); fetchFromSheets(); }} className="w-full py-4 md:py-6 bg-indigo-600 text-white font-black rounded-2xl md:rounded-[1.5rem] shadow-xl text-sm uppercase">Lưu cấu hình</button>
            </div>
@@ -794,11 +951,13 @@ const SidebarItem: React.FC<{ icon: React.ReactNode; label: string; active?: boo
 const StatCard: React.FC<{ label: string; value: number; icon: React.ReactNode; subValue?: string; trend?: 'up' | 'down'; color: string; classes: any }> = ({ label, value, icon, subValue, trend, color, classes }) => (
   <div className="bg-white dark:bg-slate-900/40 rounded-2xl md:rounded-[3rem] p-6 md:p-8 border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group hover:border-indigo-500/50 transition-all glass-panel">
     <div className="flex items-center justify-between mb-4 md:mb-6 relative z-10">
-      <div className={`p-3 md:p-4 rounded-xl md:rounded-2xl ${classes.bg} ${classes.text} group-hover:scale-110 transition-transform`}>{icon}</div>
-      <span className="text-[9px] md:text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">{label}</span>
+      <div className={`p-3 md:p-4 rounded-xl md:rounded-2xl ${classes.bg} ${classes.text} group-hover:scale-110 transition-transform shrink-0`}>{icon}</div>
+      <span className="text-[9px] md:text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest truncate">{label}</span>
     </div>
     <div className="relative z-10">
-      <div className="text-xl md:text-2xl font-black tracking-tight">{value.toLocaleString('vi-VN')} <span className="text-[10px] opacity-50 font-bold ml-0.5">đ</span></div>
+      <div className="text-lg md:text-xl lg:text-2xl font-black tracking-tight tabular-nums break-all">
+        {value.toLocaleString('vi-VN')} <span className="text-[10px] opacity-50 font-bold ml-0.5">đ</span>
+      </div>
       {subValue && (
         <div className={`text-[10px] md:text-[11px] font-black flex items-center gap-1.5 mt-1 md:mt-2 ${trend === 'up' ? 'text-emerald-500' : 'text-rose-500'}`}>
           {trend === 'up' ? <TrendingUp size={12}/> : <TrendingDown size={12}/>} {subValue}
@@ -817,7 +976,7 @@ const BrokerageCard: React.FC<{ name: string; cash: number; netCapital: number; 
         <div className="bg-white dark:bg-slate-900/40 rounded-[2rem] md:rounded-[3rem] overflow-hidden border border-slate-200 dark:border-slate-800 shadow-sm glass-panel">
             <div className="p-6 md:p-10 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/10 flex flex-col lg:flex-row justify-between gap-6 md:gap-8">
                 <div className="flex items-center gap-4 md:gap-6">
-                    <div className="p-4 md:p-6 rounded-2xl md:rounded-[2rem] bg-indigo-600 text-white shadow-lg relative">
+                    <div className="p-4 md:p-6 rounded-2xl md:rounded-[2rem] bg-indigo-600 text-white shadow-lg relative shrink-0">
                         <Building2 className="w-6 h-6 md:w-9 md:h-9" />
                         <button 
                             onClick={(e) => { e.stopPropagation(); onBuyNew(name); }} 
@@ -826,9 +985,9 @@ const BrokerageCard: React.FC<{ name: string; cash: number; netCapital: number; 
                             <Plus size={12} strokeWidth={4} />
                         </button>
                     </div>
-                    <div>
+                    <div className="min-w-0">
                         <div className="flex items-center gap-3">
-                            <h3 className="text-xl md:text-3xl font-black tracking-tighter uppercase">{name}</h3>
+                            <h3 className="text-xl md:text-3xl font-black tracking-tighter uppercase truncate">{name}</h3>
                             <button 
                                 onClick={() => onBuyNew(name)}
                                 className="hidden md:flex px-4 py-2 bg-indigo-600/10 hover:bg-indigo-600 text-indigo-600 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all items-center gap-2"
@@ -837,14 +996,14 @@ const BrokerageCard: React.FC<{ name: string; cash: number; netCapital: number; 
                             </button>
                         </div>
                         <div className="flex flex-wrap gap-2 md:gap-3 mt-2 md:mt-4">
-                             <span className="text-[8px] md:text-[10px] font-black uppercase bg-indigo-500/10 px-3 py-1.5 rounded-lg text-indigo-500">Vốn: {netCapital.toLocaleString('vi-VN')} đ</span>
-                             <span className="text-[8px] md:text-[10px] font-black uppercase bg-emerald-500/10 px-3 py-1.5 rounded-lg text-emerald-600">Tiền: {cash.toLocaleString('vi-VN')} đ</span>
+                             <span className="text-[8px] md:text-[10px] font-black uppercase bg-indigo-500/10 px-3 py-1.5 rounded-lg text-indigo-500 tabular-nums">Vốn: {netCapital.toLocaleString('vi-VN')} đ</span>
+                             <span className="text-[8px] md:text-[10px] font-black uppercase bg-emerald-500/10 px-3 py-1.5 rounded-lg text-emerald-600 tabular-nums">Tiền: {cash.toLocaleString('vi-VN')} đ</span>
                         </div>
                     </div>
                 </div>
                 <div className="lg:text-right">
-                    <div className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Tài sản sàn</div>
-                    <div className="text-2xl md:text-4xl font-black tracking-tight mb-2 md:mb-3">{totalValue.toLocaleString('vi-VN')} đ</div>
+                    <div className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 truncate">Tài sản sàn</div>
+                    <div className="text-xl md:text-2xl lg:text-4xl font-black tracking-tight mb-2 md:mb-3 tabular-nums break-all">{totalValue.toLocaleString('vi-VN')} đ</div>
                     <div className={`text-[10px] md:text-xs font-black px-4 py-2 rounded-xl inline-flex items-center gap-2 ${profit >= 0 ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'}`}>
                         {profit >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
                         {profit >= 0 ? '+' : ''}{profitPercent.toFixed(2)}%
@@ -887,38 +1046,38 @@ const BrokerageCard: React.FC<{ name: string; cash: number; netCapital: number; 
                                 return (
                                     <tr key={s.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/20 transition-colors group/row">
                                         <td className="px-6 md:px-10 py-6 md:py-8">
-                                            <div className="flex items-center gap-3 md:gap-4">
-                                                <div className={`p-2 md:p-4 rounded-xl md:rounded-2xl ${bgColorClass} ${symbolColorClass}`}>
-                                                    {gainPP >= 0 ? <GainIcon className="w-4 h-4 md:w-6 h-6" /> : <LossIcon className="w-4 h-4 md:w-6 h-6" />}
+                                            <div className="flex items-center gap-3 md:gap-4 min-w-0">
+                                                <div className={`p-2 md:p-4 rounded-xl md:rounded-2xl ${bgColorClass} ${symbolColorClass} shrink-0`}>
+                                                    {gainPP >= 0 ? <GainIcon className="w-4 h-4 md:w-6 md:h-6" /> : <LossIcon className="w-4 h-4 md:w-6 md:h-6" />}
                                                 </div>
-                                                <div>
+                                                <div className="min-w-0">
                                                     <div className="flex items-center gap-2">
-                                                        <div className={`font-black text-xl md:text-3xl tracking-tighter italic ${symbolColorClass}`}>
+                                                        <div className={`font-bold text-xl md:text-3xl tracking-tight truncate ${symbolColorClass}`}>
                                                           {s.symbol}
                                                         </div>
-                                                        {gainPP < -7 && <AlertCircle size={16} className="text-red-500 animate-pulse" />}
+                                                        {gainPP < -7 && <AlertCircle size={16} className="text-red-500 animate-pulse shrink-0" />}
                                                     </div>
-                                                    <div className="text-[8px] md:text-[10px] text-slate-400 font-bold uppercase mt-1">
+                                                    <div className="text-[8px] md:text-[10px] text-slate-400 font-bold uppercase mt-1 truncate">
                                                         {s.sector}
                                                     </div>
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className="px-4 md:px-6 py-6 md:py-8 text-right font-mono font-black text-lg md:text-2xl">{s.quantity.toLocaleString('vi-VN')}</td>
+                                        <td className="px-4 md:px-6 py-6 md:py-8 text-right font-mono font-black text-base md:text-2xl tabular-nums break-all">{s.quantity.toLocaleString('vi-VN')}</td>
                                         <td className="px-4 md:px-6 py-6 md:py-8 text-right">
-                                            <div className="text-[9px] md:text-[11px] font-bold text-slate-400 mb-1">Vốn: {s.avgPrice.toLocaleString('vi-VN')}</div>
-                                            <div className="text-sm md:text-xl font-black text-slate-800 dark:text-slate-100">HT: {s.currentPrice.toLocaleString('vi-VN')}</div>
+                                            <div className="text-[9px] md:text-[11px] font-bold text-slate-400 mb-1 tabular-nums truncate">Vốn: {s.avgPrice.toLocaleString('vi-VN')}</div>
+                                            <div className="text-sm md:text-xl font-black text-slate-800 dark:text-slate-100 tabular-nums truncate">HT: {s.currentPrice.toLocaleString('vi-VN')}</div>
                                         </td>
                                         <td className={`px-4 md:px-6 py-6 md:py-8 text-right font-black ${gain >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
                                             <div className="flex flex-col items-end">
-                                                <div className="text-sm md:text-2xl flex items-center gap-1 md:gap-2">
+                                                <div className="text-sm md:text-2xl flex items-center gap-1 md:gap-2 tabular-nums truncate max-w-[150px]">
                                                     {gain.toLocaleString('vi-VN')}
                                                 </div>
-                                                <div className="text-[9px] md:text-[11px] font-black opacity-80 uppercase tracking-tighter bg-current/10 px-2 py-0.5 rounded-md">{gainPP.toFixed(2)}%</div>
+                                                <div className="text-[9px] md:text-[11px] font-black opacity-80 uppercase tracking-tighter bg-current/10 px-2 py-0.5 rounded-md tabular-nums">{gainPP.toFixed(2)}%</div>
                                             </div>
                                         </td>
                                         <td className="px-6 md:px-10 py-6 md:py-8 text-right">
-                                            <div className="flex gap-2 md:gap-3 justify-end lg:opacity-0 group-hover/row:opacity-100 transition-all">
+                                            <div className="flex gap-2 md:gap-3 justify-end lg:opacity-0 group-hover/row:opacity-100 transition-all shrink-0">
                                                 <button onClick={() => onAction('adjust', s)} className="p-2 md:p-3.5 rounded-lg md:rounded-2xl bg-amber-500/10 text-amber-500"><Edit3 className="w-4 h-4 md:w-5 md:h-5" /></button>
                                                 <button onClick={() => onAction('dividend', s)} className="p-2 md:p-3.5 rounded-lg md:rounded-2xl bg-indigo-500/10 text-indigo-500"><Gift className="w-4 h-4 md:w-5 md:h-5" /></button>
                                                 <button onClick={() => onAction('sell', s)} className="p-2 md:p-3.5 rounded-lg md:rounded-2xl bg-rose-500/10 text-rose-500"><Minus className="w-4 h-4 md:w-5 md:h-5" /></button>
@@ -954,7 +1113,7 @@ const Modal: React.FC<{ title: string; children: React.ReactNode; onClose: () =>
             <button onClick={onClose} className="absolute top-6 right-6 p-2 text-slate-400 hover:text-rose-500 transition-all"><X className="w-6 h-6 md:w-7 md:h-7" /></button>
             <div className="flex items-center gap-4 md:gap-6 mb-8 md:mb-12">
                 {icon && <div className="p-3 md:p-5 bg-indigo-600 rounded-2xl md:rounded-3xl text-white shadow-xl">{icon}</div>}
-                <h3 className="text-2xl md:text-4xl font-black tracking-tighter uppercase italic">{title}</h3>
+                <h3 className="text-2xl md:text-4xl font-black tracking-tighter uppercase italic truncate">{title}</h3>
             </div>
             {children}
         </div>
@@ -1006,7 +1165,7 @@ const Input: React.FC<{
                     value={isNumeric ? displayValue : value} 
                     onChange={handleChange} 
                     placeholder={placeholder} 
-                    className="w-full bg-slate-50 dark:bg-slate-950 border-2 border-slate-100 dark:border-slate-900 rounded-xl md:rounded-[1.5rem] px-5 md:px-8 py-4 md:py-6 text-sm md:text-base font-bold outline-none focus:border-indigo-500 transition-all text-slate-800 dark:text-white" 
+                    className="w-full bg-slate-50 dark:bg-slate-950 border-2 border-slate-100 dark:border-slate-900 rounded-xl md:rounded-[1.5rem] px-5 md:px-8 py-4 md:py-6 text-sm md:text-base font-bold outline-none focus:border-indigo-500 transition-all text-slate-800 dark:text-white tabular-nums" 
                 />
             </div>
         </div>
