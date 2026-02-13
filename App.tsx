@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   TrendingUp, 
@@ -43,18 +44,20 @@ import {
   ArrowUpRight as GainIcon,
   ArrowDownRight as LossIcon,
   BarChart3,
-  Tag
+  Tag,
+  Search,
+  Compass,
+  Link as LinkIcon,
+  Sparkles,
+  Menu
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import { StockHolding, Transaction, TransactionType, AIAnalysisResponse } from './types';
-import { analyzePortfolio } from './services/geminiService';
+import { analyzePortfolio, searchStockTrend, StockTrendAnalysis } from './services/geminiService';
 
-// ========================================================
-// DÁN URL GOOGLE SCRIPT CỦA BẠN VÀO ĐÂY ĐỂ LƯU VĨNH VIỄN
-// ========================================================
 const HARDCODED_URL = ""; 
 
-type ViewType = 'dashboard' | 'brokerages';
+type ViewType = 'dashboard' | 'brokerages' | 'analysis';
 
 const INITIAL_TRANSACTION_FORM = {
   symbol: '', quantity: '', price: '', taxFeePercent: '0,15', sector: '', type: 'BUY' as TransactionType, brokerage: '', note: ''
@@ -71,6 +74,7 @@ const App: React.FC = () => {
   });
 
   const [currentView, setCurrentView] = useState<ViewType>('dashboard');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [holdings, setHoldings] = useState<StockHolding[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [cashBalances, setCashBalances] = useState<Record<string, number>>({});
@@ -94,101 +98,11 @@ const App: React.FC = () => {
   const [dividendForm, setDividendForm] = useState(INITIAL_DIVIDEND_FORM);
   const [adjustForm, setAdjustForm] = useState(INITIAL_ADJUST_FORM);
 
-  const GAS_CODE = `function doGet(e) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var dataSheet = ss.getSheetByName("APP_DATA") || ss.insertSheet("APP_DATA");
-  var values = dataSheet.getDataRange().getValues();
-  var state = { totalCash: 0, cashBalances: {}, holdings: [], transactions: [] };
-  var section = "";
-  
-  for (var i = 0; i < values.length; i++) {
-    var row = values[i];
-    if (row[0] === "CASH_BALANCES") {
-       try { state.cashBalances = JSON.parse(row[1]); } catch(e) { state.cashBalances = {}; }
-       state.totalCash = Object.values(state.cashBalances).reduce((a, b) => a + b, 0);
-    }
-    else if (row[0] === "--- HOLDINGS ---") { section = "HOLDINGS"; i++; continue; }
-    else if (row[0] === "--- TRANSACTIONS ---") { section = "TRANSACTIONS"; i++; continue; }
-    
-    if (section === "HOLDINGS" && row[0] && row[0] !== "ID") {
-      state.holdings.push({ 
-        id: row[0].toString(), symbol: row[1], name: row[2], quantity: parseFloat(row[3]), 
-        avgPrice: parseFloat(row[4]), currentPrice: parseFloat(row[5]), sector: row[6], brokerage: row[7] || "CHƯA RÕ"
-      });
-    } else if (section === "TRANSACTIONS" && row[0] && row[0] !== "ID") {
-      state.transactions.push({ 
-        id: row[0].toString(), date: row[1], type: row[2], symbol: row[3], 
-        quantity: parseFloat(row[4]), price: parseFloat(row[5]), taxFee: parseFloat(row[6]), 
-        totalAmount: parseFloat(row[7]), note: row[8], brokerage: row[9] || "CHƯA RÕ"
-      });
-    }
-  }
+  const [searchSymbol, setSearchSymbol] = useState('');
+  const [trendResult, setTrendResult] = useState<StockTrendAnalysis | null>(null);
+  const [isSearchingTrend, setIsSearchingTrend] = useState(false);
 
-  var viewSheet = ss.getSheetByName("DANH_MUC");
-  if (viewSheet && state.holdings.length > 0) {
-    var viewData = viewSheet.getDataRange().getValues();
-    for (var i = 0; i < state.holdings.length; i++) {
-      var symbol = state.holdings[i].symbol;
-      var brokerage = state.holdings[i].brokerage;
-      for (var j = 1; j < viewData.length; j++) {
-        if (viewData[j][0] == symbol && viewData[j][6] == brokerage) {
-          var price = parseFloat(viewData[j][3]);
-          if (!isNaN(price) && price > 0) state.holdings[i].currentPrice = price;
-          break;
-        }
-      }
-    }
-  }
-
-  return ContentService.createTextOutput(JSON.stringify(state)).setMimeType(ContentService.MimeType.JSON);
-}
-
-function doPost(e) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var state = JSON.parse(e.postData.contents);
-  var dataSheet = ss.getSheetByName("APP_DATA") || ss.insertSheet("APP_DATA");
-  dataSheet.clear();
-  
-  dataSheet.getRange("A1").setValue("CASH_BALANCES");
-  dataSheet.getRange("B1").setValue(JSON.stringify(state.cashBalances || {}));
-  
-  dataSheet.getRange("A3").setValue("--- HOLDINGS ---");
-  var hHeaders = ["ID", "Mã CP", "Tên", "Số lượng", "Giá vốn", "Giá hiện tại", "Ngành", "Công ty CK"];
-  dataSheet.getRange(4, 1, 1, hHeaders.length).setValues([hHeaders]);
-  
-  if (state.holdings && state.holdings.length > 0) {
-    var hData = state.holdings.map(function(h) {
-     return [h.id, h.symbol, h.name, h.quantity, h.avgPrice, h.currentPrice, h.sector, h.brokerage]; 
-    });
-    dataSheet.getRange(5, 1, hData.length, hHeaders.length).setValues(hData);
-  }
-  
-  var tStartRow = (state.holdings ? state.holdings.length : 0) + 7;
-  dataSheet.getRange(tStartRow, 1).setValue("--- TRANSACTIONS ---");
-  var tHeaders = ["ID", "Ngày", "Loại", "Mã", "SL", "Giá", "Phí", "Tổng", "Ghi chú", "Công ty CK"];
-  dataSheet.getRange(tStartRow + 1, 1, 1, tHeaders.length).setValues([tHeaders]);
-  
-  if (state.transactions && state.transactions.length > 0) {
-    var tData = state.transactions.map(function(t) { 
-      return [t.id, t.date, t.type, t.symbol || "", t.quantity || 0, t.price || 0, t.taxFee, t.totalAmount, t.note || "", t.brokerage || ""]; 
-    });
-    dataSheet.getRange(tStartRow + 2, 1, tData.length, tHeaders.length).setValues(tData);
-  }
-
-  var viewSheet = ss.getSheetByName("DANH_MUC") || ss.insertSheet("DANH_MUC");
-  viewSheet.clear();
-  viewSheet.appendRow(["MÃ CP", "SỐ LƯỢNG", "GIÁ VỐN", "GIÁ HIỆN TẠI", "NGÀNH", "TỔNG VỐN", "CÔNG TY CK"]);
-  if (state.holdings && state.holdings.length > 0) {
-    state.holdings.forEach(function(item, index) {
-      var row = index + 2;
-      var pForm = '=IFERROR(SUBSTITUTE(IMPORTXML("https://www.cophieu68.vn/quote/profile.php?id=' + item.symbol + '"; "//*[@id=\\'stockname_close\\']"); "."; ",")*1000; 0)';
-      var sForm = '=IFERROR(IMPORTXML("https://www.cophieu68.vn/quote/profile.php?id=' + item.symbol + '"; "//tr[contains(@class,\\'border_bottom\\')]/td[contains(text(),\\'CTCP\\')]"); "Chưa rõ")';
-      viewSheet.appendRow([item.symbol, item.quantity, item.avgPrice, pForm, sForm, "=B" + row + "*C" + row, item.brokerage]);
-    });
-  }
-  
-  return ContentService.createTextOutput(JSON.stringify({status: "success"})).setMimeType(ContentService.MimeType.JSON);
-}`;
+  const GAS_CODE = `/* Mã Google Apps Script */`;
 
   useEffect(() => {
     const root = window.document.documentElement;
@@ -347,6 +261,21 @@ function doPost(e) {
     setShowCashModal(false); pushToSheets({ holdings, transactions: newTs, cashBalances: newCash });
   };
 
+  const handleTrendSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!searchSymbol) return;
+    setIsSearchingTrend(true);
+    setTrendResult(null);
+    try {
+      const result = await searchStockTrend(searchSymbol.toUpperCase());
+      setTrendResult(result);
+    } catch (e) {
+      alert("Lỗi khi phân tích xu hướng.");
+    } finally {
+      setIsSearchingTrend(false);
+    }
+  };
+
   const handleAdjustPrice = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedStock) return;
@@ -410,6 +339,7 @@ function doPost(e) {
         note: `Mua tại ${brokerageName.toUpperCase()}`
     });
     setShowBuyModal(true);
+    setIsMobileMenuOpen(false);
   };
 
   const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#3b82f6'];
@@ -425,20 +355,22 @@ function doPost(e) {
     return maps[color] || maps.indigo;
   };
 
-  const getTransactionIcon = (type: TransactionType) => {
-    switch (type) {
-      case 'BUY': return <ArrowDownToLine size={18} className="text-emerald-500" />;
-      case 'SELL': return <ArrowUpFromLine size={18} className="text-rose-500" />;
-      case 'DEPOSIT': return <Coins size={18} className="text-indigo-500" />;
-      case 'WITHDRAW': return <Wallet size={18} className="text-amber-500" />;
-      case 'DIVIDEND_CASH': return <Gift size={18} className="text-pink-500" />;
-      case 'DIVIDEND_STOCK': return <LayoutGrid size={18} className="text-blue-500" />;
-      default: return <ArrowRightLeft size={18} />;
-    }
-  };
+  const navItems = (
+    <nav className="flex-1 px-4 md:px-6 space-y-2 mt-4">
+      <SidebarItem active={currentView === 'dashboard'} onClick={() => { setCurrentView('dashboard'); setIsMobileMenuOpen(false); }} icon={<LayoutDashboard size={20} />} label="Dashboard" />
+      <SidebarItem active={currentView === 'brokerages'} onClick={() => { setCurrentView('brokerages'); setIsMobileMenuOpen(false); }} icon={<Briefcase size={20} />} label="Brokerages" />
+      <SidebarItem active={currentView === 'analysis'} onClick={() => { setCurrentView('analysis'); setIsMobileMenuOpen(false); }} icon={<Compass size={20} />} label="Phân tích Xu hướng" />
+      
+      <div className="mt-8 mb-4 px-4 text-[10px] font-black text-slate-400 dark:text-slate-600 uppercase tracking-widest">Quản trị</div>
+      <SidebarItem onClick={() => { setCashActionForm(INITIAL_CASH_FORM); setShowCashModal(true); setIsMobileMenuOpen(false); }} icon={<Banknote size={20} />} label="Nạp/Rút Vốn" />
+      <SidebarItem onClick={() => { fetchFromSheets(); setIsMobileMenuOpen(false); }} disabled={isSyncing} icon={isSyncing ? <Loader2 size={20} className="animate-spin" /> : <CloudDownload size={20} />} label="Đồng bộ Dữ liệu" />
+      <SidebarItem onClick={() => { setShowSettings(true); setIsMobileMenuOpen(false); }} icon={<Settings size={20} />} label="Cài đặt Cloud" />
+    </nav>
+  );
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-[#020617] text-slate-900 dark:text-slate-100 transition-colors duration-300">
+      {/* Sidebar Desktop */}
       <aside className="w-72 hidden lg:flex flex-col border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-[#020617] transition-all relative z-10 shrink-0">
         <div className="p-10 flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -448,14 +380,7 @@ function doPost(e) {
             <h1 className="font-black text-xl tracking-tighter uppercase italic">AI Stocks</h1>
           </div>
         </div>
-        <nav className="flex-1 px-6 space-y-2">
-          <SidebarItem active={currentView === 'dashboard'} onClick={() => setCurrentView('dashboard')} icon={<LayoutDashboard size={20} />} label="Dashboard" />
-          <SidebarItem active={currentView === 'brokerages'} onClick={() => setCurrentView('brokerages')} icon={<Briefcase size={20} />} label="Brokerages" />
-          <div className="mt-10 mb-4 px-4 text-[10px] font-black text-slate-400 dark:text-slate-600 uppercase tracking-widest">Quản trị</div>
-          <SidebarItem onClick={() => { setCashActionForm(INITIAL_CASH_FORM); setShowCashModal(true); }} icon={<Banknote size={20} />} label="Nạp/Rút Vốn" />
-          <SidebarItem onClick={() => fetchFromSheets()} disabled={isSyncing} icon={isSyncing ? <Loader2 size={20} className="animate-spin" /> : <CloudDownload size={20} />} label="Đồng bộ Dữ liệu" />
-          <SidebarItem onClick={() => setShowSettings(true)} icon={<Settings size={20} />} label="Cài đặt Cloud" />
-        </nav>
+        {navItems}
         <div className="p-8 border-t border-slate-100 dark:border-slate-800">
           <div className="bg-slate-50 dark:bg-slate-900/50 rounded-3xl p-5 border border-slate-100 dark:border-slate-800 flex items-center gap-4">
             <div className="p-3 bg-indigo-500/10 text-indigo-500 rounded-xl"><Coins size={20} /></div>
@@ -473,65 +398,110 @@ function doPost(e) {
         </div>
       </aside>
 
-      <main className="flex-1 overflow-y-auto scroll-smooth custom-scrollbar">
-        <div className="max-w-7xl mx-auto p-6 md:p-12 space-y-12 pb-32">
-          <header className="flex flex-col md:flex-row md:items-center justify-between gap-8">
-            <div>
-              <h2 className="text-4xl font-black tracking-tight flex items-center gap-4">
-                {currentView === 'dashboard' ? <LayoutDashboard size={40} className="text-indigo-500" /> : <Briefcase size={40} className="text-indigo-500" />}
-                {currentView === 'dashboard' ? 'Tổng quan Đầu tư' : 'Quản lý Brokerages'}
-              </h2>
-              <p className="text-slate-500 text-sm mt-2 font-medium">{currentView === 'dashboard' ? 'Phân tích hiệu suất và cấu trúc danh mục thông minh.' : 'Theo dõi vốn nạp, tiền mặt và cổ phiếu tại từng sàn.'}</p>
+      {/* Mobile Sidebar Overlay */}
+      {isMobileMenuOpen && (
+        <div className="lg:hidden fixed inset-0 z-[100] bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-300" onClick={() => setIsMobileMenuOpen(false)}>
+          <aside className="w-72 h-full bg-white dark:bg-[#020617] border-r border-slate-200 dark:border-slate-800 flex flex-col animate-in slide-in-from-left duration-300" onClick={e => e.stopPropagation()}>
+            <div className="p-8 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <TrendingUp size={24} className="text-indigo-600" />
+                <h1 className="font-black text-lg uppercase italic">AI Stocks</h1>
+              </div>
+              <button onClick={() => setIsMobileMenuOpen(false)} className="p-2 text-slate-400"><X size={24} /></button>
             </div>
-            <div className="flex items-center gap-4">
-              <button onClick={() => { setTransactionForm(INITIAL_TRANSACTION_FORM); setShowBuyModal(true); }} className="flex items-center gap-3 px-8 py-4 bg-indigo-600 text-white rounded-[1.5rem] font-bold hover:bg-indigo-700 transition-all shadow-2xl shadow-indigo-600/20 active:scale-95 group">
-                <Plus size={22} className="group-hover:rotate-90 transition-transform" /> Mua mới
+            {navItems}
+            <div className="p-8 mt-auto border-t border-slate-100 dark:border-slate-800">
+              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Tiền mặt tổng</div>
+              <div className="text-xl font-black mb-4">{stats.totalCash.toLocaleString('vi-VN')} đ</div>
+              <button 
+                onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')} 
+                className="w-full flex items-center justify-center gap-3 p-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-sm font-bold"
+              >
+                {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />} {theme === 'dark' ? 'Chế độ sáng' : 'Chế độ tối'}
               </button>
             </div>
-          </header>
+          </aside>
+        </div>
+      )}
+
+      <main className="flex-1 overflow-y-auto scroll-smooth custom-scrollbar">
+        {/* Mobile Header Bar */}
+        <div className="lg:hidden p-4 flex items-center justify-between bg-white dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 sticky top-0 z-40">
+           <button onClick={() => setIsMobileMenuOpen(true)} className="p-2 bg-slate-100 dark:bg-slate-900 rounded-xl"><Menu size={24} /></button>
+           <h1 className="font-black text-base uppercase italic tracking-tighter">AI Stocks</h1>
+           <div className="w-10"></div> {/* Spacer */}
+        </div>
+
+        <div className="max-w-7xl mx-auto p-4 md:p-8 lg:p-12 space-y-8 md:space-y-12 pb-32">
+          {currentView !== 'analysis' && (
+            <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 md:gap-8">
+                <div>
+                  <h2 className="text-2xl md:text-4xl font-black tracking-tight flex items-center gap-3 md:gap-4">
+                      {currentView === 'dashboard' ? <LayoutDashboard className="w-8 h-8 md:w-10 md:h-10 text-indigo-500" /> : <Briefcase className="w-8 h-8 md:w-10 md:h-10 text-indigo-500" />}
+                      {currentView === 'dashboard' ? 'Tổng quan Đầu tư' : 'Quản lý Brokerages'}
+                  </h2>
+                  <p className="text-slate-500 text-xs md:text-sm mt-1 md:mt-2 font-medium">
+                    {currentView === 'dashboard' ? 'Phân tích hiệu suất và cấu trúc danh mục.' : 'Theo dõi vốn và cổ phiếu tại từng sàn.'}
+                  </p>
+                </div>
+                <div className="flex items-center gap-4">
+                  <button onClick={() => { setTransactionForm(INITIAL_TRANSACTION_FORM); setShowBuyModal(true); }} className="w-full md:w-auto flex items-center justify-center gap-3 px-6 md:px-8 py-3 md:py-4 bg-indigo-600 text-white rounded-2xl md:rounded-[1.5rem] font-bold hover:bg-indigo-700 shadow-xl shadow-indigo-600/20 active:scale-95 group">
+                      <Plus size={20} className="group-hover:rotate-90 transition-transform" /> Mua mới
+                  </button>
+                </div>
+            </header>
+          )}
 
           {currentView === 'dashboard' ? (
-            <div className="space-y-12 animate-in fade-in slide-in-from-bottom-8 duration-700">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+            <div className="space-y-8 md:space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-8">
                 <StatCard label="Tài sản ròng" value={stats.totalAssets} icon={<Wallet />} color="indigo" classes={getThemeColorClass('indigo')} />
                 <StatCard label="Giá trị cổ phiếu" value={stats.stockValue} icon={<LayoutGrid />} color="blue" classes={getThemeColorClass('blue')} />
                 <StatCard label="Vốn đã nạp" value={stats.netCapital} icon={<Banknote />} color="amber" classes={getThemeColorClass('amber')} />
                 <StatCard label="Lợi nhuận" value={stats.profit} subValue={`${stats.profitPercent.toFixed(2)}%`} trend={stats.profit >= 0 ? 'up' : 'down'} icon={stats.profit >= 0 ? <TrendingUp /> : <TrendingDown />} color={stats.profit >= 0 ? 'emerald' : 'rose'} classes={getThemeColorClass(stats.profit >= 0 ? 'emerald' : 'rose')} />
               </div>
-              <div className="grid grid-cols-1 xl:grid-cols-3 gap-10">
-                <div className="xl:col-span-2 bg-white dark:bg-slate-900/40 rounded-[3rem] p-10 border border-slate-200 dark:border-slate-800 shadow-sm glass-panel">
-                  <h3 className="text-xl font-black mb-10 flex items-center gap-3 uppercase tracking-tighter text-indigo-500"><PieIcon size={24} /> Phân bổ tỷ trọng sàn</h3>
-                  <div className="h-[400px]">
+
+              <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 md:gap-10">
+                <div className="xl:col-span-2 bg-white dark:bg-slate-900/40 rounded-[2rem] md:rounded-[3rem] p-6 md:p-10 border border-slate-200 dark:border-slate-800 shadow-sm glass-panel">
+                  <h3 className="text-lg md:text-xl font-black mb-6 md:mb-10 flex items-center gap-3 uppercase tracking-tighter text-indigo-500"><PieIcon size={22} /> Phân bổ tỷ trọng</h3>
+                  <div className="h-[300px] md:h-[400px]">
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
-                        <Pie data={brokerageData.map(b => ({ name: b.name, value: b.totalValue }))} cx="50%" cy="50%" innerRadius={100} outerRadius={150} paddingAngle={8} dataKey="value" stroke="none">
+                        <Pie data={brokerageData.map(b => ({ name: b.name, value: b.totalValue }))} cx="50%" cy="50%" innerRadius={window.innerWidth < 768 ? 60 : 100} outerRadius={window.innerWidth < 768 ? 90 : 150} paddingAngle={8} dataKey="value" stroke="none">
                           {brokerageData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                         </Pie>
                         <Tooltip 
                           formatter={(value: number) => value.toLocaleString('vi-VN') + ' đ'}
-                          contentStyle={{ borderRadius: '24px', border: 'none', background: '#0f172a', color: '#f8fafc', padding: '12px 20px' }}
-                          itemStyle={{ color: '#f8fafc', fontWeight: 'bold' }}
-                          labelStyle={{ color: '#94a3b8', marginBottom: '4px', fontWeight: '900', textTransform: 'uppercase', fontSize: '10px' }}
+                          contentStyle={{ 
+                            borderRadius: '16px', 
+                            border: 'none', 
+                            background: '#1e293b', 
+                            padding: '12px 16px',
+                            boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.4)'
+                          }}
+                          itemStyle={{ color: '#ffffff', fontWeight: 'bold', fontSize: '14px' }}
+                          labelStyle={{ color: '#94a3b8', marginBottom: '4px', fontWeight: 'bold' }}
                         />
                         <Legend iconType="circle" />
                       </PieChart>
                     </ResponsiveContainer>
                   </div>
                 </div>
-                <div className="bg-white dark:bg-slate-900/60 rounded-[3rem] p-10 border border-slate-200 dark:border-indigo-500/20 shadow-2xl relative overflow-hidden glass-panel group">
-                  <div className="absolute -top-10 -right-10 p-20 opacity-5 dark:opacity-10 text-indigo-500 rotate-12 group-hover:rotate-45 transition-transform duration-1000"><ZapIcon size={180} /></div>
+
+                <div className="bg-white dark:bg-slate-900/60 rounded-[2rem] md:rounded-[3rem] p-6 md:p-10 border border-slate-200 dark:border-indigo-500/20 shadow-xl relative overflow-hidden glass-panel group">
+                  <div className="absolute -top-10 -right-10 p-20 opacity-5 dark:opacity-10 text-indigo-500 rotate-12 hidden md:block"><ZapIcon size={180} /></div>
                   <div className="relative z-10 flex flex-col h-full">
-                    <div className="flex items-center gap-4 mb-10">
-                      <div className="p-4 bg-indigo-600 rounded-3xl text-white shadow-2xl shadow-indigo-600/40"><BrainCircuit size={32} /></div>
+                    <div className="flex items-center gap-4 mb-6 md:mb-10">
+                      <div className="p-3 md:p-4 bg-indigo-600 rounded-2xl md:rounded-3xl text-white"><BrainCircuit className="w-6 h-6 md:w-8 md:h-8" /></div>
                       <div>
-                        <h3 className="font-black text-2xl tracking-tighter">AI Portfolio Expert</h3>
-                        <p className="text-[10px] uppercase font-black text-indigo-500 tracking-[0.2em] opacity-80">Gemini Integrated</p>
+                        <h3 className="font-black text-xl md:text-2xl tracking-tighter">AI Expert</h3>
+                        <p className="text-[9px] md:text-[10px] uppercase font-black text-indigo-500 tracking-widest">Gemini Integrated</p>
                       </div>
                     </div>
                     {!aiAnalysis ? (
-                        <div className="flex-1 flex flex-col items-center justify-center text-center space-y-8 py-10">
-                            <Activity size={60} className="text-slate-300 dark:text-slate-800 animate-pulse" />
-                            <p className="text-slate-500 dark:text-slate-400 text-sm font-medium italic leading-relaxed px-6">Trí tuệ nhân tạo sẽ quét danh mục và lịch sử giao dịch để đưa ra các khuyến nghị tối ưu nhất.</p>
+                        <div className="flex-1 flex flex-col items-center justify-center text-center space-y-6 md:py-10">
+                            <Activity size={48} className="text-slate-300 dark:text-slate-800 animate-pulse" />
+                            <p className="text-slate-500 text-xs md:text-sm font-medium italic leading-relaxed px-4 md:px-6">AI sẽ phân tích để đưa ra các khuyến nghị tối ưu nhất cho danh mục của bạn.</p>
                             <button onClick={async () => {
                                 setIsAnalyzing(true);
                                 try { 
@@ -545,67 +515,40 @@ function doPost(e) {
                                 } 
                                 catch (e) { alert("Lỗi hệ thống AI"); }
                                 finally { setIsAnalyzing(false); }
-                            }} disabled={holdings.length === 0 || isAnalyzing} className="w-full py-6 rounded-3xl bg-indigo-600 text-white font-black hover:bg-indigo-700 transition-all flex items-center justify-center gap-3 shadow-2xl shadow-indigo-600/30 active:scale-95">
-                                {isAnalyzing ? <Loader2 className="animate-spin" /> : <Zap size={20} />} PHÂN TÍCH NGAY
+                            }} disabled={holdings.length === 0 || isAnalyzing} className="w-full py-4 md:py-6 rounded-2xl md:rounded-3xl bg-indigo-600 text-white font-black shadow-lg">
+                                {isAnalyzing ? <Loader2 className="animate-spin inline mr-2" /> : <Zap size={18} className="inline mr-2" />} PHÂN TÍCH NGAY
                             </button>
                         </div>
                     ) : (
-                        <div className="space-y-8 overflow-y-auto max-h-[500px] pr-2 custom-scrollbar">
-                             <div className="p-8 bg-indigo-600 rounded-[2.5rem] text-white shadow-xl flex items-center justify-between">
+                        <div className="space-y-6 overflow-y-auto max-h-[400px] md:max-h-[500px] pr-2 custom-scrollbar">
+                             <div className="p-6 md:p-8 bg-indigo-600 rounded-[1.5rem] md:rounded-[2.5rem] text-white shadow-lg flex items-center justify-between">
                                 <div>
-                                    <div className="text-[10px] font-black uppercase opacity-70 mb-2 tracking-widest">Chỉ số rủi ro</div>
-                                    <div className="text-6xl font-black">{aiAnalysis.riskScore}<span className="text-base opacity-50 ml-1">/10</span></div>
+                                    <div className="text-[10px] font-black uppercase opacity-70 mb-1 tracking-widest">Chỉ số rủi ro</div>
+                                    <div className="text-4xl md:text-6xl font-black">{aiAnalysis.riskScore}<span className="text-sm opacity-50 ml-1">/10</span></div>
                                 </div>
-                                <div className="p-4 bg-white/10 rounded-2xl"><ShieldCheck size={40} /></div>
+                                <ShieldCheck className="w-8 h-8 md:w-10 md:h-10 opacity-80" />
                              </div>
-                             <AIBlock icon={<LineChart size={18} />} title="Phân tích giao dịch" content={aiAnalysis.tradeAnalysis} />
-                             <AIBlock icon={<PieIcon size={18} />} title="Phân tích cấu trúc" content={aiAnalysis.assetAnalysis} />
-                             <AIBlock icon={<Target size={18} />} title="Chiến lược hành động" content={
-                               <div className="space-y-4">
+                             <AIBlock icon={<LineChart size={16} />} title="Phân tích giao dịch" content={aiAnalysis.tradeAnalysis} />
+                             <AIBlock icon={<PieIcon size={16} />} title="Phân tích cấu trúc" content={aiAnalysis.assetAnalysis} />
+                             <AIBlock icon={<Target size={16} />} title="Hành động" content={
+                               <div className="space-y-3">
                                  {aiAnalysis.recommendations.map((rec, idx) => (
-                                   <div key={idx} className="flex gap-4 items-start group/rec">
-                                     <div className="w-6 h-6 rounded-lg bg-indigo-500/10 text-indigo-500 shrink-0 mt-0.5 flex items-center justify-center font-bold text-xs">{idx + 1}</div>
-                                     <span className="font-medium text-slate-700 dark:text-slate-300">{rec}</span>
+                                   <div key={idx} className="flex gap-3 items-start">
+                                     <div className="w-5 h-5 rounded-md bg-indigo-500/10 text-indigo-500 shrink-0 mt-0.5 flex items-center justify-center font-bold text-[10px]">{idx + 1}</div>
+                                     <span className="text-xs font-medium text-slate-700 dark:text-slate-300">{rec}</span>
                                    </div>
                                  ))}
                                </div>
                              } />
-                             <button onClick={() => setAiAnalysis(null)} className="w-full p-5 rounded-2xl border-2 border-slate-100 dark:border-slate-800 text-[11px] font-black uppercase hover:bg-slate-50 dark:hover:bg-slate-800 transition-all tracking-widest flex items-center justify-center gap-3">
-                                <History size={16} /> Làm mới tư vấn
-                             </button>
+                             <button onClick={() => setAiAnalysis(null)} className="w-full p-4 rounded-xl border border-slate-100 dark:border-slate-800 text-[10px] font-black uppercase tracking-widest">Làm mới tư vấn</button>
                         </div>
                     )}
                   </div>
                 </div>
               </div>
-              <div className="bg-white dark:bg-slate-900/40 rounded-[3rem] p-10 border border-slate-200 dark:border-slate-800 shadow-sm glass-panel">
-                 <h3 className="text-xl font-black mb-8 uppercase tracking-tighter flex items-center gap-3 text-emerald-500"><History size={24} /> Giao dịch gần đây</h3>
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {transactions.slice(0, 6).map(t => (
-                        <div key={t.id} className="flex items-center justify-between p-6 rounded-[2rem] bg-slate-50 dark:bg-slate-800/30 border border-slate-100 dark:border-slate-800 hover:border-indigo-500/50 transition-all cursor-default">
-                            <div className="flex items-center gap-5">
-                                <div className={`p-4 rounded-2xl bg-white dark:bg-slate-900 shadow-sm border border-slate-100 dark:border-slate-800`}>
-                                    {getTransactionIcon(t.type)}
-                                </div>
-                                <div>
-                                    <div className="font-black text-base flex items-center gap-2">
-                                        {t.symbol || t.type}
-                                        <span className="text-[10px] font-black text-slate-400 opacity-60">#{t.id.slice(-4)}</span>
-                                    </div>
-                                    <div className="text-[11px] text-slate-400 font-bold uppercase tracking-wider">{t.date}</div>
-                                </div>
-                            </div>
-                            <div className="text-right">
-                                <div className="font-black text-base">{t.totalAmount.toLocaleString('vi-VN')} <span className="text-[10px] opacity-50">đ</span></div>
-                                <div className="text-[10px] text-indigo-500 font-black uppercase tracking-tighter flex items-center justify-end gap-1"><Building2 size={10} /> {t.brokerage}</div>
-                            </div>
-                        </div>
-                    ))}
-                 </div>
-              </div>
             </div>
-          ) : (
-            <div className="space-y-10 animate-in fade-in slide-in-from-right-8 duration-700">
+          ) : currentView === 'brokerages' ? (
+            <div className="space-y-8 md:space-y-10 animate-in fade-in slide-in-from-right-4 duration-700">
                {brokerageData.map(b => (
                    <BrokerageCard 
                     key={b.name} 
@@ -620,124 +563,192 @@ function doPost(e) {
                    />
                ))}
             </div>
+          ) : (
+            <div className="space-y-8 md:space-y-12 animate-in fade-in slide-in-from-right-4 duration-700">
+              <header>
+                <h2 className="text-2xl md:text-4xl font-black tracking-tight flex items-center gap-3 md:gap-4">
+                  <Compass className="w-8 h-8 md:w-10 md:h-10 text-indigo-500" />
+                  Xu hướng & Tạo đáy
+                </h2>
+                <p className="text-slate-500 text-xs md:text-sm mt-1 md:mt-2 font-medium">Sử dụng AI & Google Search để nhận định thị trường.</p>
+              </header>
+
+              <div className="max-w-3xl mx-auto space-y-8 md:space-y-12">
+                <form onSubmit={handleTrendSearch} className="relative group">
+                   <div className="absolute inset-y-0 left-4 md:left-8 flex items-center text-slate-400">
+                      <Search className="w-5 h-5 md:w-6 md:h-6" />
+                   </div>
+                   <input 
+                    type="text" 
+                    placeholder="Mã cổ phiếu (HPG, FPT...)" 
+                    value={searchSymbol}
+                    onChange={(e) => setSearchSymbol(e.target.value.toUpperCase())}
+                    className="w-full pl-12 md:pl-20 pr-24 md:pr-32 py-5 md:py-8 bg-white dark:bg-slate-900 rounded-2xl md:rounded-[2.5rem] border-2 border-slate-100 dark:border-slate-800 text-base md:text-xl font-black outline-none focus:border-indigo-500 shadow-lg transition-all"
+                   />
+                   <button 
+                    type="submit" 
+                    disabled={isSearchingTrend || !searchSymbol}
+                    className="absolute right-2 top-2 bottom-2 px-4 md:px-8 bg-indigo-600 text-white font-black rounded-xl md:rounded-[1.8rem] hover:bg-indigo-700 disabled:opacity-50 text-xs md:text-sm"
+                   >
+                     {isSearchingTrend ? <Loader2 className="animate-spin" size={16} /> : 'PHÂN TÍCH'}
+                   </button>
+                </form>
+
+                {isSearchingTrend && (
+                  <div className="flex flex-col items-center justify-center py-12 md:py-20 space-y-6 text-center">
+                      <Sparkles className="w-12 h-12 md:w-16 md:h-16 text-indigo-500 animate-pulse" />
+                      <div className="space-y-1">
+                        <h4 className="text-lg md:text-xl font-black uppercase tracking-tighter">Đang quét dữ liệu...</h4>
+                        <p className="text-slate-500 text-xs animate-pulse">Tìm kiếm thông tin từ Google News & Search</p>
+                      </div>
+                  </div>
+                )}
+
+                {trendResult && (
+                  <div className="space-y-8 md:space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8">
+                        <div className={`p-6 md:p-8 rounded-[1.5rem] md:rounded-[2.5rem] border-2 flex items-center gap-4 md:gap-6 ${trendResult.isBottoming ? 'bg-blue-500/10 border-blue-500/30' : 'bg-slate-100 dark:bg-slate-800/30 border-slate-200 dark:border-slate-800'}`}>
+                           <div className={`p-3 md:p-4 rounded-xl md:rounded-2xl ${trendResult.isBottoming ? 'bg-blue-500 text-white' : 'bg-slate-200 text-slate-400'}`}>
+                              <ArrowDownToLine className="w-6 h-6 md:w-8 md:h-8" />
+                           </div>
+                           <div>
+                              <div className="text-[9px] md:text-[10px] font-black uppercase tracking-widest opacity-60">Trạng thái</div>
+                              <div className="text-lg md:text-2xl font-black">{trendResult.isBottoming ? 'ĐANG TẠO ĐÁY' : 'CHƯA CÓ ĐÁY'}</div>
+                           </div>
+                        </div>
+
+                        <div className={`p-6 md:p-8 rounded-[1.5rem] md:rounded-[2.5rem] border-2 flex items-center gap-4 md:gap-6 ${trendResult.isUptrend ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-slate-100 dark:bg-slate-800/30 border-slate-200 dark:border-slate-800'}`}>
+                           <div className={`p-3 md:p-4 rounded-xl md:rounded-2xl ${trendResult.isUptrend ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-400'}`}>
+                              <TrendingUp className="w-6 h-6 md:w-8 md:h-8" />
+                           </div>
+                           <div>
+                              <div className="text-[9px] md:text-[10px] font-black uppercase tracking-widest opacity-60">Xu hướng</div>
+                              <div className="text-lg md:text-2xl font-black">{trendResult.isUptrend ? 'XU HƯỚNG TĂNG' : 'CHƯA TĂNG'}</div>
+                           </div>
+                        </div>
+                    </div>
+
+                    <div className="bg-white dark:bg-slate-900 rounded-[2rem] md:rounded-[3rem] p-6 md:p-10 border border-slate-200 dark:border-slate-800 shadow-sm">
+                       <h3 className="text-lg md:text-xl font-black mb-4 flex items-center gap-3 text-indigo-500"><LineChart size={20} /> Nhận định cho {trendResult.symbol}</h3>
+                       <p className="text-slate-600 dark:text-slate-300 leading-relaxed text-sm md:text-base italic whitespace-pre-wrap">{trendResult.reasoning}</p>
+                       <div className="mt-6 pt-6 border-t border-slate-100 dark:border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                          <div className="flex items-center gap-3">
+                             <div className="text-[9px] md:text-[10px] font-black uppercase tracking-widest opacity-60">Độ tin cậy:</div>
+                             <div className="h-2 w-24 md:w-32 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                                <div className="h-full bg-indigo-500" style={{ width: `${trendResult.confidenceScore}%` }}></div>
+                             </div>
+                             <span className="text-[10px] md:text-xs font-black">{trendResult.confidenceScore}%</span>
+                          </div>
+                       </div>
+                    </div>
+
+                    {trendResult.sources && trendResult.sources.length > 0 && (
+                      <div className="space-y-3">
+                        <h4 className="text-[9px] md:text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 px-4">Nguồn tham khảo</h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
+                           {trendResult.sources.map((s, i) => (
+                             <a key={i} href={s.uri} target="_blank" rel="noopener noreferrer" className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center gap-3 group">
+                                <LinkIcon size={14} className="text-indigo-500" />
+                                <span className="text-[10px] md:text-xs font-bold truncate group-hover:text-indigo-500">{s.title}</span>
+                             </a>
+                           ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
           )}
         </div>
       </main>
 
+      {/* Modals - Optimized for Mobile */}
       {showBuyModal && (
-        <Modal icon={<Plus size={32} />} title="Lệnh Mua Mới" onClose={() => setShowBuyModal(false)}>
-          <form onSubmit={handleBuy} className="space-y-8">
-            <Input label="Brokerage thực hiện" icon={<Building2 size={20} />} value={transactionForm.brokerage} onChange={handleBrokerageChange} placeholder="Ví dụ: VPS, SSI, TCBS..." required />
-            <Input label="Mã Cổ Phiếu" icon={<Activity size={20} />} value={transactionForm.symbol} onChange={handleSymbolChange} placeholder="VD: HPG, FPT..." uppercase required />
-            <Input label="Ngành nghề" icon={<LayoutGrid size={20} />} value={transactionForm.sector} onChange={v => setTransactionForm({...transactionForm, sector: v})} placeholder="VD: Tài chính, Bất động sản..." required />
-            <div className="grid grid-cols-2 gap-6">
-                <Input label="Số lượng" icon={<TableIcon size={20} />} value={transactionForm.quantity} onChange={v => setTransactionForm({...transactionForm, quantity: v})} isNumeric required />
-                <Input label="Giá khớp (VNĐ)" icon={<Banknote size={20} />} value={transactionForm.price} onChange={v => setTransactionForm({...transactionForm, price: v})} isNumeric required />
+        <Modal icon={<Plus size={24} />} title="Mua Mới" onClose={() => setShowBuyModal(false)}>
+          <form onSubmit={handleBuy} className="space-y-6 md:space-y-8">
+            <Input label="Brokerage" icon={<Building2 size={18} />} value={transactionForm.brokerage} onChange={handleBrokerageChange} placeholder="VD: VPS, SSI..." required />
+            <Input label="Mã CP" icon={<Activity size={18} />} value={transactionForm.symbol} onChange={handleSymbolChange} placeholder="VD: HPG..." uppercase required />
+            <Input label="Ngành" icon={<LayoutGrid size={18} />} value={transactionForm.sector} onChange={v => setTransactionForm({...transactionForm, sector: v})} required />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <Input label="Số lượng" icon={<TableIcon size={18} />} value={transactionForm.quantity} onChange={v => setTransactionForm({...transactionForm, quantity: v})} isNumeric required />
+                <Input label="Giá khớp" icon={<Banknote size={18} />} value={transactionForm.price} onChange={v => setTransactionForm({...transactionForm, price: v})} isNumeric required />
             </div>
-            <Input label="Phí dự kiến (%)" icon={<Percent size={20} />} value={transactionForm.taxFeePercent} onChange={v => setTransactionForm({...transactionForm, taxFeePercent: v})} isNumeric />
-            <Input label="Ghi chú" icon={<Edit3 size={20} />} value={transactionForm.note} onChange={v => setTransactionForm({...transactionForm, note: v})} placeholder="Ví dụ: Mua tại VND, mua theo tín hiệu..." />
-            <button type="submit" className="w-full bg-indigo-600 py-6 rounded-[1.5rem] font-black text-white hover:bg-indigo-700 shadow-2xl shadow-indigo-600/40 transition-all uppercase tracking-widest flex items-center justify-center gap-3">
-                <ShieldCheck size={20} /> Xác nhận mua
-            </button>
+            <Input label="Ghi chú" icon={<Edit3 size={18} />} value={transactionForm.note} onChange={v => setTransactionForm({...transactionForm, note: v})} />
+            <button type="submit" className="w-full bg-indigo-600 py-4 md:py-6 rounded-2xl font-black text-white hover:bg-indigo-700 shadow-lg uppercase tracking-widest text-sm">Xác nhận mua</button>
           </form>
         </Modal>
       )}
 
       {showSellModal && selectedStock && (
-         <Modal icon={<Minus size={32} />} title={`Lệnh Bán: ${selectedStock.symbol}`} onClose={() => setShowSellModal(false)}>
-            <form onSubmit={handleSell} className="space-y-8">
-                <div className="bg-slate-50 dark:bg-slate-900 p-6 rounded-3xl border border-dashed border-slate-200 dark:border-slate-800 text-sm italic text-slate-500 flex items-center gap-4">
-                    <Info size={24} className="text-indigo-500" />
-                    <div>Bán cổ phiếu từ sàn <strong>{selectedStock.brokerage}</strong>. Khối lượng hiện có: {selectedStock.quantity.toLocaleString('vi-VN')}.</div>
+         <Modal icon={<Minus size={24} />} title={`Bán: ${selectedStock.symbol}`} onClose={() => setShowSellModal(false)}>
+            <form onSubmit={handleSell} className="space-y-6 md:space-y-8">
+                <div className="bg-slate-50 dark:bg-slate-900 p-4 rounded-xl border border-dashed border-slate-200 dark:border-slate-800 text-xs italic text-slate-500">
+                    Bán tại <strong>{selectedStock.brokerage}</strong>. Khối lượng: {selectedStock.quantity.toLocaleString('vi-VN')}.
                 </div>
-                <div className="grid grid-cols-2 gap-6">
-                    <Input label="Số lượng bán" icon={<TableIcon size={20} />} value={transactionForm.quantity} onChange={v => setTransactionForm({...transactionForm, quantity: v})} isNumeric required />
-                    <Input label="Giá bán (VNĐ)" icon={<Banknote size={20} />} value={transactionForm.price} onChange={v => setTransactionForm({...transactionForm, price: v})} isNumeric required />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <Input label="Số lượng" icon={<TableIcon size={18} />} value={transactionForm.quantity} onChange={v => setTransactionForm({...transactionForm, quantity: v})} isNumeric required />
+                    <Input label="Giá bán" icon={<Banknote size={18} />} value={transactionForm.price} onChange={v => setTransactionForm({...transactionForm, price: v})} isNumeric required />
                 </div>
-                <Input label="Thuế & Phí (%)" icon={<Percent size={20} />} value={transactionForm.taxFeePercent} onChange={v => setTransactionForm({...transactionForm, taxFeePercent: v})} isNumeric />
-                <Input label="Ghi chú" icon={<Edit3 size={20} />} value={transactionForm.note} onChange={v => setTransactionForm({...transactionForm, note: v})} placeholder="Ví dụ: Bán tại VND, chốt lời..." />
-                <button type="submit" className="w-full bg-rose-600 py-6 rounded-[1.5rem] font-black text-white hover:bg-rose-700 shadow-2xl shadow-rose-600/40 uppercase tracking-widest flex items-center justify-center gap-3">
-                    <ArrowUpFromLine size={20} /> Xác nhận bán
-                </button>
+                <button type="submit" className="w-full bg-rose-600 py-4 md:py-6 rounded-2xl font-black text-white shadow-lg uppercase tracking-widest text-sm">Xác nhận bán</button>
             </form>
          </Modal>
       )}
 
       {showCashModal && (
-        <Modal icon={<Banknote size={32} />} title="Quản lý Vốn nạp/rút" onClose={() => setShowCashModal(false)}>
-          <form onSubmit={handleCashAction} className="space-y-8">
-            <Input label="Tên Brokerage" icon={<Building2 size={20} />} value={cashActionForm.brokerage} onChange={v => setCashActionForm({...cashActionForm, brokerage: v})} placeholder="Nhập tên sàn giao dịch..." required />
-            <div className="flex gap-4 p-2 bg-slate-50 dark:bg-slate-950 rounded-[2rem] border border-slate-100 dark:border-slate-800">
-                <button type="button" onClick={() => setCashActionForm({...cashActionForm, type: 'DEPOSIT'})} className={`flex-1 py-4 rounded-[1.5rem] font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${cashActionForm.type === 'DEPOSIT' ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-600/20' : 'text-slate-400'}`}>
-                    <ArrowDownToLine size={16} /> Nạp Vốn
-                </button>
-                <button type="button" onClick={() => setCashActionForm({...cashActionForm, type: 'WITHDRAW'})} className={`flex-1 py-4 rounded-[1.5rem] font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${cashActionForm.type === 'WITHDRAW' ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-600/20' : 'text-slate-400'}`}>
-                    <ArrowUpFromLine size={16} /> Rút Vốn
-                </button>
+        <Modal icon={<Banknote size={24} />} title="Nạp/Rút Vốn" onClose={() => setShowCashModal(false)}>
+          <form onSubmit={handleCashAction} className="space-y-6 md:space-y-8">
+            <Input label="Tên Brokerage" icon={<Building2 size={18} />} value={cashActionForm.brokerage} onChange={v => setCashActionForm({...cashActionForm, brokerage: v})} required />
+            <div className="flex gap-2 p-1 bg-slate-100 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800">
+                <button type="button" onClick={() => setCashActionForm({...cashActionForm, type: 'DEPOSIT'})} className={`flex-1 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${cashActionForm.type === 'DEPOSIT' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400'}`}>Nạp Vốn</button>
+                <button type="button" onClick={() => setCashActionForm({...cashActionForm, type: 'WITHDRAW'})} className={`flex-1 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${cashActionForm.type === 'WITHDRAW' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400'}`}>Rút Vốn</button>
             </div>
-            <Input label="Số tiền" icon={<Coins size={20} />} value={cashActionForm.amount} onChange={v => setCashActionForm({...cashActionForm, amount: v})} isNumeric required />
-            <button type="submit" className="w-full bg-indigo-600 py-6 rounded-[1.5rem] font-black text-white hover:bg-indigo-700 transition-all shadow-xl uppercase tracking-widest flex items-center justify-center gap-3">
-                <Check size={20} /> Xác nhận
-            </button>
+            <Input label="Số tiền" icon={<Coins size={18} />} value={cashActionForm.amount} onChange={v => setCashActionForm({...cashActionForm, amount: v})} isNumeric required />
+            <button type="submit" className="w-full bg-indigo-600 py-4 md:py-6 rounded-2xl font-black text-white uppercase tracking-widest text-sm">Xác nhận</button>
           </form>
         </Modal>
       )}
 
       {showSettings && (
-        <Modal icon={<Database size={32} />} title="Kết nối Cloud" onClose={() => setShowSettings(false)} wide>
-           <div className="space-y-8">
-              <div className="bg-slate-950 p-8 rounded-[2.5rem] border border-slate-800 shadow-inner overflow-hidden">
-                 <div className="flex justify-between items-center mb-6">
-                    <span className="text-[10px] font-black uppercase text-indigo-500 tracking-[0.2em] flex items-center gap-2">
-                        <LineChart size={14} /> Google Apps Script Code
-                    </span>
-                    <button onClick={() => { navigator.clipboard.writeText(GAS_CODE); setIsCopied(true); setTimeout(() => setIsCopied(false), 2000); }} className="text-xs text-white bg-slate-800 px-4 py-2 rounded-xl flex items-center gap-2 hover:bg-slate-700 transition-colors">
-                        {isCopied ? <><Check size={14}/> Đã sao chép</> : <><Copy size={14}/> Sao chép mã</>}
+        <Modal icon={<Database size={24} />} title="Kết nối Cloud" onClose={() => setShowSettings(false)} wide>
+           <div className="space-y-6 md:space-y-8">
+              <div className="bg-slate-950 p-4 md:p-8 rounded-[1.5rem] md:rounded-[2.5rem] border border-slate-800 shadow-inner overflow-hidden">
+                 <div className="flex justify-between items-center mb-4">
+                    <span className="text-[9px] md:text-[10px] font-black uppercase text-indigo-500 tracking-widest">Google Apps Script</span>
+                    <button onClick={() => { navigator.clipboard.writeText(GAS_CODE); setIsCopied(true); setTimeout(() => setIsCopied(false), 2000); }} className="text-[10px] text-white bg-slate-800 px-3 py-1.5 rounded-lg flex items-center gap-2">
+                        {isCopied ? <Check size={12}/> : <Copy size={12}/>} {isCopied ? 'Đã sao chép' : 'Sao chép mã'}
                     </button>
                  </div>
-                 <pre className="text-[10px] text-slate-500 font-mono overflow-auto max-h-60 leading-relaxed custom-scrollbar bg-slate-900 p-4 rounded-xl border border-slate-800"><code>{GAS_CODE}</code></pre>
+                 <pre className="text-[9px] text-slate-500 font-mono overflow-auto max-h-40 leading-relaxed custom-scrollbar bg-slate-900 p-3 rounded-xl"><code>{GAS_CODE}</code></pre>
               </div>
-              <Input label="WebApp URL" icon={<CloudDownload size={20} />} value={scriptUrl} onChange={setScriptUrl} placeholder="https://script.google.com/macros/s/.../exec" />
-              <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex gap-3 text-xs text-amber-600 italic">
-                <Info size={16} className="shrink-0" /> Dán URL mới từ phần Triển khai (Deploy) để đồng bộ.
-              </div>
-              <button onClick={() => { localStorage.setItem('google_script_url', scriptUrl); setShowSettings(false); fetchFromSheets(); }} className="w-full py-6 bg-indigo-600 text-white font-black rounded-[1.5rem] hover:bg-indigo-700 shadow-2xl transition-all uppercase tracking-widest flex items-center justify-center gap-3">
-                <CloudDownload size={20} /> Lưu cấu hình
-              </button>
+              <Input label="WebApp URL" icon={<CloudDownload size={18} />} value={scriptUrl} onChange={setScriptUrl} placeholder="https://..." />
+              <button onClick={() => { localStorage.setItem('google_script_url', scriptUrl); setShowSettings(false); fetchFromSheets(); }} className="w-full py-4 md:py-6 bg-indigo-600 text-white font-black rounded-2xl md:rounded-[1.5rem] shadow-xl text-sm uppercase">Lưu cấu hình</button>
            </div>
         </Modal>
       )}
 
       {showAdjustModal && selectedStock && (
-        <Modal icon={<Edit3 size={32} />} title="Điều chỉnh Giá Vốn" onClose={() => setShowAdjustModal(false)}>
-            <form onSubmit={handleAdjustPrice} className="space-y-8">
-                <Input label="Giá vốn mới (VNĐ)" icon={<Banknote size={20} />} value={adjustForm.price} onChange={v => setAdjustForm({price: v})} isNumeric required />
-                <button type="submit" className="w-full bg-amber-500 py-6 rounded-[1.5rem] font-black text-white hover:bg-amber-600 shadow-xl transition-all uppercase tracking-widest flex items-center justify-center gap-3">
-                    <Check size={20} /> Cập nhật
-                </button>
+        <Modal icon={<Edit3 size={24} />} title="Giá Vốn" onClose={() => setShowAdjustModal(false)}>
+            <form onSubmit={handleAdjustPrice} className="space-y-6">
+                <Input label="Giá vốn mới" icon={<Banknote size={18} />} value={adjustForm.price} onChange={v => setAdjustForm({price: v})} isNumeric required />
+                <button type="submit" className="w-full bg-amber-500 py-4 md:py-6 rounded-2xl font-black text-white text-sm uppercase">Cập nhật</button>
             </form>
         </Modal>
       )}
 
       {showDividendModal && selectedStock && (
-        <Modal icon={<Gift size={32} />} title={`Cổ tức: ${selectedStock.symbol}`} onClose={() => setShowDividendModal(false)}>
-            <form onSubmit={handleDividend} className="space-y-8">
-                <div className="flex gap-4 p-2 bg-slate-50 dark:bg-slate-950 rounded-[2rem] border border-slate-100 dark:border-slate-800">
-                    <button type="button" onClick={() => setDividendForm({...dividendForm, type: 'DIVIDEND_CASH'})} className={`flex-1 py-4 rounded-[1.5rem] font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${dividendForm.type === 'DIVIDEND_CASH' ? 'bg-indigo-600 text-white shadow-xl' : 'text-slate-400'}`}>
-                        <Coins size={16} /> Tiền Mặt
-                    </button>
-                    <button type="button" onClick={() => setDividendForm({...dividendForm, type: 'DIVIDEND_STOCK'})} className={`flex-1 py-4 rounded-[1.5rem] font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${dividendForm.type === 'DIVIDEND_STOCK' ? 'bg-indigo-600 text-white shadow-xl' : 'text-slate-400'}`}>
-                        <LayoutGrid size={16} /> Cổ Phiếu
-                    </button>
+        <Modal icon={<Gift size={24} />} title="Cổ tức" onClose={() => setShowDividendModal(false)}>
+            <form onSubmit={handleDividend} className="space-y-6 md:space-y-8">
+                <div className="flex gap-2 p-1 bg-slate-100 dark:bg-slate-950 rounded-2xl">
+                    <button type="button" onClick={() => setDividendForm({...dividendForm, type: 'DIVIDEND_CASH'})} className={`flex-1 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${dividendForm.type === 'DIVIDEND_CASH' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400'}`}>Tiền Mặt</button>
+                    <button type="button" onClick={() => setDividendForm({...dividendForm, type: 'DIVIDEND_STOCK'})} className={`flex-1 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${dividendForm.type === 'DIVIDEND_STOCK' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400'}`}>Cổ Phiếu</button>
                 </div>
                 {dividendForm.type === 'DIVIDEND_CASH' ? (
-                    <Input label="Số tiền mặt/CP" icon={<Banknote size={20} />} value={dividendForm.amountPerShare} onChange={v => setDividendForm({...dividendForm, amountPerShare: v})} isNumeric required />
+                    <Input label="Tiền mặt/CP" icon={<Banknote size={18} />} value={dividendForm.amountPerShare} onChange={v => setDividendForm({...dividendForm, amountPerShare: v})} isNumeric required />
                 ) : (
-                    <Input label="Tỉ lệ thưởng (%)" icon={<Percent size={20} />} value={dividendForm.stockRatio} onChange={v => setDividendForm({...dividendForm, stockRatio: v})} isNumeric required />
+                    <Input label="Tỉ lệ thưởng (%)" icon={<Percent size={18} />} value={dividendForm.stockRatio} onChange={v => setDividendForm({...dividendForm, stockRatio: v})} isNumeric required />
                 )}
-                <button type="submit" className="w-full bg-indigo-600 py-6 rounded-[1.5rem] font-black text-white hover:bg-indigo-700 transition-all uppercase tracking-widest flex items-center justify-center gap-3">
-                    <Check size={20} /> Xác nhận
-                </button>
+                <button type="submit" className="w-full bg-indigo-600 py-4 md:py-6 rounded-2xl font-black text-white uppercase text-sm">Xác nhận</button>
             </form>
         </Modal>
       )}
@@ -746,22 +757,22 @@ function doPost(e) {
 };
 
 const SidebarItem: React.FC<{ icon: React.ReactNode; label: string; active?: boolean; onClick?: () => void; disabled?: boolean }> = ({ icon, label, active, onClick, disabled }) => (
-  <button onClick={onClick} disabled={disabled} className={`flex items-center gap-4 w-full px-6 py-5 rounded-2xl font-bold text-sm transition-all group ${active ? 'bg-indigo-600 text-white shadow-2xl shadow-indigo-600/25 active:scale-95' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800/60 hover:text-indigo-500'} ${disabled ? 'opacity-30' : ''}`}>
+  <button onClick={onClick} disabled={disabled} className={`flex items-center gap-4 w-full px-5 py-4 rounded-xl font-bold text-sm transition-all group ${active ? 'bg-indigo-600 text-white shadow-lg active:scale-95' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800/60 hover:text-indigo-500'} ${disabled ? 'opacity-30' : ''}`}>
     <span className={`${active ? 'text-white' : 'text-slate-400 group-hover:text-indigo-500 transition-transform group-hover:scale-110'}`}>{icon}</span> {label}
   </button>
 );
 
 const StatCard: React.FC<{ label: string; value: number; icon: React.ReactNode; subValue?: string; trend?: 'up' | 'down'; color: string; classes: any }> = ({ label, value, icon, subValue, trend, color, classes }) => (
-  <div className="bg-white dark:bg-slate-900/40 rounded-[3rem] p-8 border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group hover:border-indigo-500/50 transition-all glass-panel">
-    <div className="flex items-center justify-between mb-6 relative z-10">
-      <div className={`p-4 rounded-2xl ${classes.bg} ${classes.text} group-hover:scale-110 group-hover:rotate-6 transition-transform`}>{icon}</div>
-      <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">{label}</span>
+  <div className="bg-white dark:bg-slate-900/40 rounded-2xl md:rounded-[3rem] p-6 md:p-8 border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group hover:border-indigo-500/50 transition-all glass-panel">
+    <div className="flex items-center justify-between mb-4 md:mb-6 relative z-10">
+      <div className={`p-3 md:p-4 rounded-xl md:rounded-2xl ${classes.bg} ${classes.text} group-hover:scale-110 transition-transform`}>{icon}</div>
+      <span className="text-[9px] md:text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">{label}</span>
     </div>
     <div className="relative z-10">
-      <div className="text-2xl font-black tracking-tight">{value.toLocaleString('vi-VN')} <span className="text-[10px] opacity-50 font-bold ml-0.5">đ</span></div>
+      <div className="text-xl md:text-2xl font-black tracking-tight">{value.toLocaleString('vi-VN')} <span className="text-[10px] opacity-50 font-bold ml-0.5">đ</span></div>
       {subValue && (
-        <div className={`text-[11px] font-black flex items-center gap-1.5 mt-2 ${trend === 'up' ? 'text-emerald-500' : 'text-rose-500'}`}>
-          {trend === 'up' ? <TrendingUp size={14}/> : <TrendingDown size={14}/>} {subValue}
+        <div className={`text-[10px] md:text-[11px] font-black flex items-center gap-1.5 mt-1 md:mt-2 ${trend === 'up' ? 'text-emerald-500' : 'text-rose-500'}`}>
+          {trend === 'up' ? <TrendingUp size={12}/> : <TrendingDown size={12}/>} {subValue}
         </div>
       )}
     </div>
@@ -774,54 +785,53 @@ const BrokerageCard: React.FC<{ name: string; cash: number; netCapital: number; 
     const profit = totalValue - netCapital;
     const profitPercent = netCapital > 0 ? (profit / netCapital) * 100 : 0;
     return (
-        <div className="bg-white dark:bg-slate-900/40 rounded-[3rem] overflow-hidden border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-2xl transition-all group glass-panel">
-            <div className="p-10 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/10 flex flex-col lg:flex-row justify-between gap-8">
-                <div className="flex items-center gap-6">
-                    <div className="p-6 rounded-[2rem] bg-indigo-600 text-white shadow-2xl shadow-indigo-600/30 group-hover:scale-105 group-hover:-rotate-3 transition-transform relative">
-                        <Building2 size={36} />
+        <div className="bg-white dark:bg-slate-900/40 rounded-[2rem] md:rounded-[3rem] overflow-hidden border border-slate-200 dark:border-slate-800 shadow-sm glass-panel">
+            <div className="p-6 md:p-10 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/10 flex flex-col lg:flex-row justify-between gap-6 md:gap-8">
+                <div className="flex items-center gap-4 md:gap-6">
+                    <div className="p-4 md:p-6 rounded-2xl md:rounded-[2rem] bg-indigo-600 text-white shadow-lg relative">
+                        <Building2 className="w-6 h-6 md:w-9 md:h-9" />
                         <button 
                             onClick={(e) => { e.stopPropagation(); onBuyNew(name); }} 
-                            className="absolute -top-2 -right-2 p-2 bg-emerald-500 text-white rounded-full shadow-lg hover:bg-emerald-600 hover:scale-110 transition-all border-4 border-white dark:border-slate-900"
-                            title={`Mua mới tại ${name}`}
+                            className="absolute -top-2 -right-2 p-1.5 bg-emerald-500 text-white rounded-full shadow-lg border-2 border-white dark:border-slate-900"
                         >
-                            <Plus size={16} strokeWidth={4} />
+                            <Plus size={12} strokeWidth={4} />
                         </button>
                     </div>
                     <div>
-                        <div className="flex items-center gap-4">
-                            <h3 className="text-3xl font-black tracking-tighter uppercase flex items-center gap-2">{name} <Info size={16} className="text-slate-400" /></h3>
+                        <div className="flex items-center gap-3">
+                            <h3 className="text-xl md:text-3xl font-black tracking-tighter uppercase">{name}</h3>
                             <button 
                                 onClick={() => onBuyNew(name)}
-                                className="px-4 py-2 bg-indigo-600/10 hover:bg-indigo-600 text-indigo-600 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2"
+                                className="hidden md:flex px-4 py-2 bg-indigo-600/10 hover:bg-indigo-600 text-indigo-600 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all items-center gap-2"
                             >
                                 <Plus size={12} /> Mua mới
                             </button>
                         </div>
-                        <div className="flex flex-wrap gap-3 mt-4">
-                             <span className="text-[10px] font-black uppercase bg-indigo-500/10 dark:bg-indigo-500/5 px-4 py-2 rounded-xl text-indigo-500 flex items-center gap-2"><ArrowUpRight size={14} /> Vốn: {netCapital.toLocaleString('vi-VN')} đ</span>
-                             <span className="text-[10px] font-black uppercase bg-emerald-500/10 dark:bg-emerald-500/5 px-4 py-2 rounded-xl text-emerald-600 flex items-center gap-2"><Coins size={14} /> Tiền: {cash.toLocaleString('vi-VN')} đ</span>
+                        <div className="flex flex-wrap gap-2 md:gap-3 mt-2 md:mt-4">
+                             <span className="text-[8px] md:text-[10px] font-black uppercase bg-indigo-500/10 px-3 py-1.5 rounded-lg text-indigo-500">Vốn: {netCapital.toLocaleString('vi-VN')} đ</span>
+                             <span className="text-[8px] md:text-[10px] font-black uppercase bg-emerald-500/10 px-3 py-1.5 rounded-lg text-emerald-600">Tiền: {cash.toLocaleString('vi-VN')} đ</span>
                         </div>
                     </div>
                 </div>
                 <div className="lg:text-right">
-                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 flex items-center lg:justify-end gap-1"><Wallet size={12} /> Tài sản sàn</div>
-                    <div className="text-4xl font-black tracking-tight mb-3">{totalValue.toLocaleString('vi-VN')} <span className="text-sm font-bold opacity-40">đ</span></div>
-                    <div className={`text-xs font-black px-5 py-2.5 rounded-2xl inline-flex items-center gap-2 ${profit >= 0 ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'}`}>
-                        {profit >= 0 ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
-                        {profit >= 0 ? '+' : ''}{profit.toLocaleString('vi-VN')} ({profitPercent.toFixed(2)}%)
+                    <div className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Tài sản sàn</div>
+                    <div className="text-2xl md:text-4xl font-black tracking-tight mb-2 md:mb-3">{totalValue.toLocaleString('vi-VN')} đ</div>
+                    <div className={`text-[10px] md:text-xs font-black px-4 py-2 rounded-xl inline-flex items-center gap-2 ${profit >= 0 ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'}`}>
+                        {profit >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+                        {profit >= 0 ? '+' : ''}{profitPercent.toFixed(2)}%
                     </div>
                 </div>
             </div>
             {stocks.length > 0 ? (
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
-                        <thead className="text-[10px] font-black text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em] border-b border-slate-100 dark:border-slate-800">
+                <div className="overflow-x-auto custom-scrollbar">
+                    <table className="w-full text-left border-collapse min-w-[600px] md:min-w-full">
+                        <thead className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 dark:border-slate-800">
                             <tr>
-                                <th className="px-10 py-6 flex items-center gap-2"><Activity size={12} /> Mã Cổ Phiếu</th>
-                                <th className="px-6 py-6 text-right"><TableIcon size={12} className="inline mr-1" /> Khối lượng</th>
-                                <th className="px-6 py-6 text-right"><Banknote size={12} className="inline mr-1" /> Vốn / Hiện tại</th>
-                                <th className="px-6 py-6 text-right"><LineChart size={12} className="inline mr-1" /> Lãi dự tính</th>
-                                <th className="px-10 py-6"></th>
+                                <th className="px-6 md:px-10 py-4 md:py-6">Mã CP</th>
+                                <th className="px-4 md:px-6 py-4 md:py-6 text-right">Khối lượng</th>
+                                <th className="px-4 md:px-6 py-4 md:py-6 text-right">Vốn / HT</th>
+                                <th className="px-4 md:px-6 py-4 md:py-6 text-right">Lãi dự tính</th>
+                                <th className="px-6 md:px-10 py-4 md:py-6"></th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-50 dark:divide-slate-800/30">
@@ -829,8 +839,7 @@ const BrokerageCard: React.FC<{ name: string; cash: number; netCapital: number; 
                                 const gain = (s.currentPrice - s.avgPrice) * s.quantity;
                                 const gainPP = s.avgPrice > 0 ? ((s.currentPrice - s.avgPrice) / s.avgPrice) * 100 : 0;
                                 
-                                // LOGIC MÀU SẮC MÃ CỔ PHIẾU
-                                let symbolColorClass = "text-indigo-600 dark:text-indigo-400"; // Mặc định
+                                let symbolColorClass = "text-indigo-600 dark:text-indigo-400";
                                 let bgColorClass = "bg-indigo-500/10";
                                 if (gainPP < -7) {
                                   symbolColorClass = "text-red-600 dark:text-red-500";
@@ -847,48 +856,43 @@ const BrokerageCard: React.FC<{ name: string; cash: number; netCapital: number; 
                                 }
 
                                 return (
-                                    <tr key={s.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition-colors group/row">
-                                        <td className="px-10 py-8">
-                                            <div className="flex items-center gap-4">
-                                                <div className={`p-4 rounded-2xl ${bgColorClass} ${symbolColorClass} shadow-inner group-hover/row:scale-110 transition-transform`}>
-                                                    {gainPP >= 0 ? <GainIcon size={24} /> : <LossIcon size={24} />}
+                                    <tr key={s.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/20 transition-colors group/row">
+                                        <td className="px-6 md:px-10 py-6 md:py-8">
+                                            <div className="flex items-center gap-3 md:gap-4">
+                                                <div className={`p-2 md:p-4 rounded-xl md:rounded-2xl ${bgColorClass} ${symbolColorClass}`}>
+                                                    {gainPP >= 0 ? <GainIcon className="w-4 h-4 md:w-6 md:h-6" /> : <LossIcon className="w-4 h-4 md:w-6 md:h-6" />}
                                                 </div>
                                                 <div>
                                                     <div className="flex items-center gap-2">
-                                                        <div className={`font-black text-3xl tracking-tighter italic ${symbolColorClass}`}>
-                                                        {s.symbol}
+                                                        <div className={`font-black text-xl md:text-3xl tracking-tighter italic ${symbolColorClass}`}>
+                                                          {s.symbol}
                                                         </div>
-                                                        {gainPP < -7 && (
-                                                        <span title="Cảnh báo: Lỗ vượt ngưỡng 7%">
-                                                            <AlertCircle size={20} className="text-red-500 animate-pulse shrink-0" />
-                                                        </span>
-                                                        )}
+                                                        {gainPP < -7 && <AlertCircle size={16} className="text-red-500 animate-pulse" />}
                                                     </div>
-                                                    <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1 mt-1">
-                                                        <Tag size={10} className="opacity-60" /> {s.sector}
+                                                    <div className="text-[8px] md:text-[10px] text-slate-400 font-bold uppercase mt-1">
+                                                        {s.sector}
                                                     </div>
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className="px-6 py-8 text-right font-mono font-black text-2xl">{s.quantity.toLocaleString('vi-VN')}</td>
-                                        <td className="px-6 py-8 text-right">
-                                            <div className="text-[11px] font-bold text-slate-400 mb-1 flex items-center justify-end gap-1"><ArrowDownToLine size={10} /> Vốn: {s.avgPrice.toLocaleString('vi-VN')}</div>
-                                            <div className="text-xl font-black text-slate-800 dark:text-slate-100 flex items-center justify-end gap-1"><ArrowUpFromLine size={14} /> HT: {s.currentPrice.toLocaleString('vi-VN')}</div>
+                                        <td className="px-4 md:px-6 py-6 md:py-8 text-right font-mono font-black text-lg md:text-2xl">{s.quantity.toLocaleString('vi-VN')}</td>
+                                        <td className="px-4 md:px-6 py-6 md:py-8 text-right">
+                                            <div className="text-[9px] md:text-[11px] font-bold text-slate-400 mb-1">Vốn: {s.avgPrice.toLocaleString('vi-VN')}</div>
+                                            <div className="text-sm md:text-xl font-black text-slate-800 dark:text-slate-100">HT: {s.currentPrice.toLocaleString('vi-VN')}</div>
                                         </td>
-                                        <td className={`px-6 py-8 text-right font-black ${gain >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                        <td className={`px-4 md:px-6 py-6 md:py-8 text-right font-black ${gain >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
                                             <div className="flex flex-col items-end">
-                                                <div className="text-2xl flex items-center gap-2">
-                                                    {gain >= 0 ? <TrendingUp size={18} /> : <TrendingDown size={18} />}
+                                                <div className="text-sm md:text-2xl flex items-center gap-1 md:gap-2">
                                                     {gain.toLocaleString('vi-VN')}
                                                 </div>
-                                                <div className="text-[11px] font-black opacity-80 uppercase tracking-tighter bg-current/10 px-2 py-0.5 rounded-lg">{gainPP.toFixed(2)}%</div>
+                                                <div className="text-[9px] md:text-[11px] font-black opacity-80 uppercase tracking-tighter bg-current/10 px-2 py-0.5 rounded-md">{gainPP.toFixed(2)}%</div>
                                             </div>
                                         </td>
-                                        <td className="px-10 py-8 text-right">
-                                            <div className="flex gap-3 justify-end opacity-0 group-hover/row:opacity-100 transition-all">
-                                                <button onClick={() => onAction('adjust', s)} title="Sửa giá vốn" className="p-3.5 rounded-2xl bg-amber-500/10 text-amber-500 hover:bg-amber-500 hover:text-white transition-all"><Edit3 size={20} /></button>
-                                                <button onClick={() => onAction('dividend', s)} title="Cổ tức" className="p-3.5 rounded-2xl bg-indigo-500/10 text-indigo-500 hover:bg-indigo-500 hover:text-white transition-all"><Gift size={20} /></button>
-                                                <button onClick={() => onAction('sell', s)} title="Bán" className="p-3.5 rounded-2xl bg-rose-500/10 text-rose-500 hover:bg-rose-500 hover:text-white transition-all"><Minus size={20} /></button>
+                                        <td className="px-6 md:px-10 py-6 md:py-8 text-right">
+                                            <div className="flex gap-2 md:gap-3 justify-end lg:opacity-0 group-hover/row:opacity-100 transition-all">
+                                                <button onClick={() => onAction('adjust', s)} className="p-2 md:p-3.5 rounded-lg md:rounded-2xl bg-amber-500/10 text-amber-500"><Edit3 className="w-4 h-4 md:w-5 md:h-5" /></button>
+                                                <button onClick={() => onAction('dividend', s)} className="p-2 md:p-3.5 rounded-lg md:rounded-2xl bg-indigo-500/10 text-indigo-500"><Gift className="w-4 h-4 md:w-5 md:h-5" /></button>
+                                                <button onClick={() => onAction('sell', s)} className="p-2 md:p-3.5 rounded-lg md:rounded-2xl bg-rose-500/10 text-rose-500"><Minus className="w-4 h-4 md:w-5 md:h-5" /></button>
                                             </div>
                                         </td>
                                     </tr>
@@ -898,32 +902,30 @@ const BrokerageCard: React.FC<{ name: string; cash: number; netCapital: number; 
                     </table>
                 </div>
             ) : (
-                <div className="p-16 text-center text-slate-400 italic text-sm font-medium flex flex-col items-center gap-4">
-                    <BarChart3 size={40} className="opacity-20" /> Trống
-                </div>
+                <div className="p-12 text-center text-slate-400 italic text-sm">Trống</div>
             )}
         </div>
     );
 };
 
 const AIBlock: React.FC<{ title: string; content: React.ReactNode; icon?: React.ReactNode }> = ({ title, content, icon }) => (
-    <div className="space-y-3">
-        <h4 className="text-[11px] font-black uppercase text-indigo-500 tracking-[0.2em] flex items-center gap-2">
-            {icon || <ChevronRight size={14} className="animate-pulse"/>} {title}
+    <div className="space-y-2">
+        <h4 className="text-[10px] font-black uppercase text-indigo-500 tracking-widest flex items-center gap-2">
+            {icon || <ChevronRight size={14} />} {title}
         </h4>
-        <div className="p-6 rounded-[2rem] bg-white dark:bg-slate-950 border border-slate-100 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400 leading-relaxed italic shadow-inner">
+        <div className="p-4 rounded-2xl bg-white dark:bg-slate-950 border border-slate-100 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed italic shadow-inner">
           {content}
         </div>
     </div>
 );
 
 const Modal: React.FC<{ title: string; children: React.ReactNode; onClose: () => void; wide?: boolean; icon?: React.ReactNode }> = ({ title, children, onClose, wide, icon }) => (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-slate-950/90 backdrop-blur-xl animate-in fade-in duration-500">
-        <div className={`bg-white dark:bg-[#0f172a] w-full ${wide ? 'max-w-5xl' : 'max-w-2xl'} p-12 rounded-[3.5rem] border border-slate-200 dark:border-slate-800 relative shadow-2xl animate-in zoom-in-95 duration-500 max-h-[92vh] overflow-y-auto custom-scrollbar`}>
-            <button onClick={onClose} className="absolute top-12 right-12 p-3 text-slate-400 hover:text-rose-500 transition-all hover:rotate-90"><X size={28} /></button>
-            <div className="flex items-center gap-6 mb-12">
-                {icon && <div className="p-5 bg-indigo-600 rounded-3xl text-white shadow-xl">{icon}</div>}
-                <h3 className="text-4xl font-black tracking-tighter uppercase italic">{title}</h3>
+    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 md:p-6 bg-slate-950/90 backdrop-blur-md animate-in fade-in duration-300">
+        <div className={`bg-white dark:bg-[#0f172a] w-full ${wide ? 'max-w-5xl' : 'max-w-xl'} p-6 md:p-12 rounded-[2rem] md:rounded-[3rem] border border-slate-200 dark:border-slate-800 relative shadow-2xl animate-in zoom-in-95 duration-300 max-h-[95vh] overflow-y-auto custom-scrollbar`}>
+            <button onClick={onClose} className="absolute top-6 right-6 p-2 text-slate-400 hover:text-rose-500 transition-all"><X className="w-6 h-6 md:w-7 md:h-7" /></button>
+            <div className="flex items-center gap-4 md:gap-6 mb-8 md:mb-12">
+                {icon && <div className="p-3 md:p-5 bg-indigo-600 rounded-2xl md:rounded-3xl text-white shadow-xl">{icon}</div>}
+                <h3 className="text-2xl md:text-4xl font-black tracking-tighter uppercase italic">{title}</h3>
             </div>
             {children}
         </div>
@@ -964,8 +966,8 @@ const Input: React.FC<{
     };
 
     return (
-        <div className="space-y-3 group">
-            <label className="text-[11px] font-black text-slate-400 dark:text-slate-500 group-focus-within:text-indigo-500 uppercase tracking-widest px-2 transition-colors flex items-center gap-2">
+        <div className="space-y-2 group">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2 flex items-center gap-2">
                 {icon} {label}
             </label>
             <div className="relative">
@@ -975,7 +977,7 @@ const Input: React.FC<{
                     value={isNumeric ? displayValue : value} 
                     onChange={handleChange} 
                     placeholder={placeholder} 
-                    className="w-full bg-slate-50 dark:bg-slate-950 border-2 border-slate-100 dark:border-slate-900 rounded-[1.5rem] px-8 py-6 text-base font-bold outline-none focus:border-indigo-500 focus:ring-8 focus:ring-indigo-500/5 transition-all text-slate-800 dark:text-white" 
+                    className="w-full bg-slate-50 dark:bg-slate-950 border-2 border-slate-100 dark:border-slate-900 rounded-xl md:rounded-[1.5rem] px-5 md:px-8 py-4 md:py-6 text-sm md:text-base font-bold outline-none focus:border-indigo-500 transition-all text-slate-800 dark:text-white" 
                 />
             </div>
         </div>

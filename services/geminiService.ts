@@ -1,5 +1,15 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { StockHolding, Transaction, AIAnalysisResponse } from "../types";
+
+export interface StockTrendAnalysis {
+  symbol: string;
+  isBottoming: boolean;
+  isUptrend: boolean;
+  reasoning: string;
+  confidenceScore: number;
+  sources: { title: string; uri: string }[];
+}
 
 export const analyzePortfolio = async (
   holdings: StockHolding[], 
@@ -9,11 +19,10 @@ export const analyzePortfolio = async (
   const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
   const model = "gemini-3-flash-preview";
   
-  // Tính toán tỷ trọng mã để AI thấy được mức độ tập trung vốn
   const holdingDetails = holdings.map(h => {
     const value = h.quantity * h.currentPrice;
     const weight = ((value / stats.totalAssets) * 100).toFixed(1);
-    const pnl = ((h.currentPrice - h.avgPrice) / h.avgPrice * 100).toFixed(1);
+    const pnl = h.avgPrice > 0 ? ((h.currentPrice - h.avgPrice) / h.avgPrice * 100).toFixed(1) : "0";
     return `- [${h.brokerage}] ${h.symbol}: Tỷ trọng ${weight}%, Lãi/Lỗ: ${pnl}%, Ngành: ${h.sector}`;
   }).join('\n');
 
@@ -21,32 +30,12 @@ export const analyzePortfolio = async (
 
 DỮ LIỆU TÀI CHÍNH HIỆN TẠI:
 - Tổng NAV: ${stats.totalAssets.toLocaleString('vi-VN')}đ
-- Tiền mặt: ${stats.totalCash.toLocaleString('vi-VN')}đ (Chiếm ${((stats.totalCash/stats.totalAssets)*100).toFixed(1)}% NAV)
 - Hiệu suất tổng: ${stats.profitPercent.toFixed(2)}%
 
 DANH MỤC CHI TIẾT:
 ${holdingDetails}
 
-LỊCH SỬ GIAO DỊCH GẦN ĐÂY:
-${transactions.slice(0, 8).map(t => `- ${t.date}: ${t.type} ${t.symbol || ''}, Khối lượng: ${t.quantity || 0}, Ghi chú: ${t.note || ''}`).join('\n')}
-
-YÊU CẦU PHÂN TÍCH CHUYÊN SÂU:
-1. ĐÁNH GIÁ CẤU TRÚC (Asset Analysis):
-   - Phân tích sự cân bằng giữa các nhóm ngành (Ngân hàng, BĐS, Thép, v.v.).
-   - Chỉ ra mã nào đang chiếm tỷ trọng quá lớn gây rủi ro tập trung.
-   - Nhận xét về tỷ lệ Tiền/Cổ phiếu trong bối cảnh thị trường hiện tại.
-
-2. PHÂN TÍCH CHIẾN THUẬT (Trade Analysis):
-   - Đánh giá các lệnh mua/bán gần đây. Bạn có đang "gồng lỗ" hay "chốt lời non" không?
-   - Nhận diện tâm lý qua ghi chú (Fomo, hoảng loạn hay kỷ luật?).
-
-3. CHỈ SỐ RỦI RO (Risk Score): Thang điểm 1-10.
-
-4. KHUYẾN NGHỊ CƠ CẤU (Recommendations): 
-   - Đưa ra 3 hành động cụ thể để tối ưu danh mục.
-   - Nếu tỷ trọng ngành nào quá cao, hãy đề xuất con số tỷ trọng mục tiêu (ví dụ: hạ BĐS xuống dưới 20%).
-
-Yêu cầu trả về JSON chuẩn theo schema. Ngôn ngữ chuyên nghiệp, sắc bén.`;
+YÊU CẦU TRẢ VỀ JSON chuẩn. Ngôn ngữ chuyên nghiệp, sắc bén.`;
 
   try {
     const response = await ai.models.generateContent({
@@ -73,6 +62,62 @@ Yêu cầu trả về JSON chuẩn theo schema. Ngôn ngữ chuyên nghiệp, s�
     return JSON.parse(text) as AIAnalysisResponse;
   } catch (error) {
     console.error("Gemini Analysis Error:", error);
+    throw error;
+  }
+};
+
+export const searchStockTrend = async (symbol: string): Promise<StockTrendAnalysis> => {
+  const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+  const model = 'gemini-3-flash-preview';
+
+  const prompt = `Phân tích mã cổ phiếu "${symbol}" tại thị trường chứng khoán Việt Nam. 
+Xác định dựa trên các thông tin mới nhất:
+1. Cổ phiếu có đang trong quá trình tạo đáy (forming a bottom) không?
+2. Cổ phiếu có đang trong xu hướng tăng (uptrend) không?
+3. Lý do cụ thể dựa trên phân tích kỹ thuật và tin tức gần đây.
+4. Trả về kết quả dưới dạng JSON.`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: model,
+      contents: prompt,
+      config: {
+        tools: [{ googleSearch: {} }],
+        systemInstruction: "Bạn là một chuyên gia phân tích kỹ thuật chứng khoán. Hãy sử dụng Google Search để tìm dữ liệu giá và tin tức mới nhất về mã cổ phiếu được yêu cầu. Phân tích xu hướng và trả về kết quả JSON chính xác.",
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            symbol: { type: Type.STRING },
+            isBottoming: { type: Type.BOOLEAN },
+            isUptrend: { type: Type.BOOLEAN },
+            reasoning: { type: Type.STRING },
+            confidenceScore: { type: Type.NUMBER, description: "Từ 0 đến 100" }
+          },
+          required: ["symbol", "isBottoming", "isUptrend", "reasoning", "confidenceScore"]
+        }
+      }
+    });
+
+    const text = response.text;
+    if (!text) throw new Error("Empty response from AI");
+    
+    const data = JSON.parse(text);
+    
+    // Trích xuất các nguồn từ grounding metadata
+    const sources: { title: string; uri: string }[] = [];
+    const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
+    if (chunks) {
+      chunks.forEach((chunk: any) => {
+        if (chunk.web) {
+          sources.push({ title: chunk.web.title, uri: chunk.web.uri });
+        }
+      });
+    }
+
+    return { ...data, sources };
+  } catch (error) {
+    console.error("Stock Trend Search Error:", error);
     throw error;
   }
 };
