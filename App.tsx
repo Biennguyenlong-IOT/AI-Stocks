@@ -543,25 +543,25 @@ function extractPrice(html) {
   );
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-[#020617] text-slate-900 dark:text-slate-100 transition-colors duration-300">
+    <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-[#020617] text-slate-900 dark:text-slate-100 transition-colors duration-300 font-inter">
       {/* Sidebar Desktop */}
       <aside className="w-72 hidden lg:flex flex-col border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-[#020617] transition-all relative z-10 shrink-0">
         <div className="p-10 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <div className="bg-indigo-600 p-2.5 rounded-2xl shadow-xl shadow-indigo-500/30 animate-float">
+            <div className="bg-indigo-600 p-2.5 rounded-2xl shadow-xl shadow-indigo-500/30 animate-float shrink-0">
                 <TrendingUp size={24} className="text-white" />
             </div>
-            <h1 className="font-black text-xl tracking-tighter uppercase italic">AI Stocks</h1>
+            <h1 className="font-black text-xl tracking-tighter uppercase italic truncate">AI Stocks</h1>
           </div>
         </div>
         {navItems}
         <div className="p-8 border-t border-slate-100 dark:border-slate-800">
           <div className="bg-slate-50 dark:bg-slate-900/50 rounded-3xl p-5 border border-slate-100 dark:border-slate-800 flex flex-col items-start gap-2 overflow-hidden shadow-sm">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 w-full">
               <div className="p-2 bg-indigo-500/10 text-indigo-500 rounded-xl shrink-0"><Coins size={20} /></div>
-              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest truncate">Tiền mặt tổng</div>
+              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest truncate flex-1">Tiền mặt tổng</div>
             </div>
-            <div className="w-full text-base lg:text-lg font-black tracking-tight tabular-nums break-all leading-tight">
+            <div className="w-full text-base lg:text-lg font-black tracking-tight tabular-nums leading-tight whitespace-nowrap overflow-visible">
               {stats.totalCash.toLocaleString('vi-VN')} <span className="text-[10px] opacity-50 font-medium">đ</span>
             </div>
           </div>
@@ -588,7 +588,7 @@ function extractPrice(html) {
             {navItems}
             <div className="p-8 mt-auto border-t border-slate-100 dark:border-slate-800">
               <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 truncate">Tiền mặt tổng</div>
-              <div className="text-lg font-black mb-4 tabular-nums break-all leading-tight">{stats.totalCash.toLocaleString('vi-VN')} đ</div>
+              <div className="text-lg font-black mb-4 tabular-nums leading-tight whitespace-nowrap">{stats.totalCash.toLocaleString('vi-VN')} đ</div>
               <button 
                 onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')} 
                 className="w-full flex items-center justify-center gap-3 p-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-sm font-bold"
@@ -952,10 +952,10 @@ const StatCard: React.FC<{ label: string; value: number; icon: React.ReactNode; 
   <div className="bg-white dark:bg-slate-900/40 rounded-2xl md:rounded-[3rem] p-6 md:p-8 border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group hover:border-indigo-500/50 transition-all glass-panel">
     <div className="flex items-center justify-between mb-4 md:mb-6 relative z-10">
       <div className={`p-3 md:p-4 rounded-xl md:rounded-2xl ${classes.bg} ${classes.text} group-hover:scale-110 transition-transform shrink-0`}>{icon}</div>
-      <span className="text-[9px] md:text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest truncate">{label}</span>
+      <span className="text-[9px] md:text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">{label}</span>
     </div>
     <div className="relative z-10">
-      <div className="text-base sm:text-lg md:text-xl lg:text-2xl font-black tracking-tight tabular-nums break-all leading-tight">
+      <div className="text-base sm:text-lg md:text-xl lg:text-2xl font-black tracking-tight tabular-nums leading-tight whitespace-nowrap overflow-visible">
         {value.toLocaleString('vi-VN')} <span className="text-[10px] opacity-50 font-bold ml-0.5">đ</span>
       </div>
       {subValue && (
@@ -996,14 +996,14 @@ const BrokerageCard: React.FC<{ name: string; cash: number; netCapital: number; 
                             </button>
                         </div>
                         <div className="flex flex-wrap gap-2 md:gap-3 mt-2 md:mt-4">
-                             <span className="text-[8px] md:text-[10px] font-black uppercase bg-indigo-500/10 px-3 py-1.5 rounded-lg text-indigo-500 tabular-nums">Vốn: {netCapital.toLocaleString('vi-VN')} đ</span>
-                             <span className="text-[8px] md:text-[10px] font-black uppercase bg-emerald-500/10 px-3 py-1.5 rounded-lg text-emerald-600 tabular-nums">Tiền: {cash.toLocaleString('vi-VN')} đ</span>
+                             <span className="text-[8px] md:text-[10px] font-black uppercase bg-indigo-500/10 px-3 py-1.5 rounded-lg text-indigo-500 tabular-nums whitespace-nowrap">Vốn: {netCapital.toLocaleString('vi-VN')} đ</span>
+                             <span className="text-[8px] md:text-[10px] font-black uppercase bg-emerald-500/10 px-3 py-1.5 rounded-lg text-emerald-600 tabular-nums whitespace-nowrap">Tiền: {cash.toLocaleString('vi-VN')} đ</span>
                         </div>
                     </div>
                 </div>
                 <div className="lg:text-right">
                     <div className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 truncate">Tài sản sàn</div>
-                    <div className="text-xl md:text-2xl lg:text-4xl font-black tracking-tight mb-2 md:mb-3 tabular-nums break-all leading-tight">{totalValue.toLocaleString('vi-VN')} đ</div>
+                    <div className="text-xl md:text-2xl lg:text-4xl font-black tracking-tight mb-2 md:mb-3 tabular-nums whitespace-nowrap leading-tight">{totalValue.toLocaleString('vi-VN')} đ</div>
                     <div className={`text-[10px] md:text-xs font-black px-4 py-2 rounded-xl inline-flex items-center gap-2 ${profit >= 0 ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'}`}>
                         {profit >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
                         {profit >= 0 ? '+' : ''}{profitPercent.toFixed(2)}%
@@ -1012,7 +1012,7 @@ const BrokerageCard: React.FC<{ name: string; cash: number; netCapital: number; 
             </div>
             {stocks.length > 0 ? (
                 <div className="overflow-x-auto custom-scrollbar">
-                    <table className="w-full text-left border-collapse min-w-[600px] md:min-w-full">
+                    <table className="w-full text-left border-collapse min-w-[800px] md:min-w-full">
                         <thead className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 dark:border-slate-800">
                             <tr>
                                 <th className="px-6 md:px-10 py-4 md:py-6">Mã CP</th>
@@ -1050,9 +1050,9 @@ const BrokerageCard: React.FC<{ name: string; cash: number; netCapital: number; 
                                                 <div className={`p-2 md:p-4 rounded-xl md:rounded-2xl ${bgColorClass} ${symbolColorClass} shrink-0`}>
                                                     {gainPP >= 0 ? <GainIcon className="w-4 h-4 md:w-6 md:h-6" /> : <LossIcon className="w-4 h-4 md:w-6 md:h-6" />}
                                                 </div>
-                                                <div className="min-w-0">
+                                                <div className="min-w-0 overflow-visible">
                                                     <div className="flex items-center gap-2">
-                                                        <div className={`font-bold text-xl md:text-3xl tracking-tight truncate leading-none ${symbolColorClass}`}>
+                                                        <div className={`font-bold text-xl md:text-3xl tracking-tight leading-none ${symbolColorClass}`}>
                                                           {s.symbol}
                                                         </div>
                                                         {gainPP < -7 && <AlertCircle size={16} className="text-red-500 animate-pulse shrink-0" />}
@@ -1063,24 +1063,28 @@ const BrokerageCard: React.FC<{ name: string; cash: number; netCapital: number; 
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className="px-4 md:px-6 py-6 md:py-8 text-right font-mono font-black text-base md:text-2xl tabular-nums break-all leading-none">{s.quantity.toLocaleString('vi-VN')}</td>
-                                        <td className="px-4 md:px-6 py-6 md:py-8 text-right">
-                                            <div className="text-[9px] md:text-[11px] font-bold text-slate-400 mb-1 tabular-nums truncate">Vốn: {s.avgPrice.toLocaleString('vi-VN')}</div>
-                                            <div className="text-sm md:text-xl font-black text-slate-800 dark:text-slate-100 tabular-nums truncate">HT: {s.currentPrice.toLocaleString('vi-VN')}</div>
+                                        <td className="px-4 md:px-6 py-6 md:py-8 text-right font-mono font-black text-base md:text-2xl tabular-nums leading-none whitespace-nowrap overflow-visible">
+                                          {s.quantity.toLocaleString('vi-VN')}
                                         </td>
-                                        <td className={`px-4 md:px-6 py-6 md:py-8 text-right font-black ${gain >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                        <td className="px-4 md:px-6 py-6 md:py-8 text-right overflow-visible">
+                                            <div className="text-[9px] md:text-[11px] font-bold text-slate-400 mb-1 tabular-nums whitespace-nowrap">Vốn: {s.avgPrice.toLocaleString('vi-VN')}</div>
+                                            <div className="text-sm md:text-xl font-black text-slate-800 dark:text-slate-100 tabular-nums whitespace-nowrap">HT: {s.currentPrice.toLocaleString('vi-VN')}</div>
+                                        </td>
+                                        <td className={`px-4 md:px-6 py-6 md:py-8 text-right font-black ${gain >= 0 ? 'text-emerald-500' : 'text-rose-500'} overflow-visible`}>
                                             <div className="flex flex-col items-end">
-                                                <div className="text-sm md:text-2xl flex items-center gap-1 md:gap-2 tabular-nums truncate max-w-[150px] leading-none">
+                                                <div className="text-sm md:text-2xl flex items-center gap-1 md:gap-2 tabular-nums leading-none whitespace-nowrap">
                                                     {gain.toLocaleString('vi-VN')}
                                                 </div>
-                                                <div className="text-[9px] md:text-[11px] font-black opacity-80 uppercase tracking-tighter bg-current/10 px-2 py-0.5 rounded-md tabular-nums mt-1">{gainPP.toFixed(2)}%</div>
+                                                <div className="text-[9px] md:text-[11px] font-black opacity-80 uppercase tracking-tighter bg-current/10 px-2 py-0.5 rounded-md tabular-nums mt-1 whitespace-nowrap">
+                                                  {gainPP.toFixed(2)}%
+                                                </div>
                                             </div>
                                         </td>
                                         <td className="px-6 md:px-10 py-6 md:py-8 text-right">
                                             <div className="flex gap-2 md:gap-3 justify-end lg:opacity-0 group-hover/row:opacity-100 transition-all shrink-0">
-                                                <button onClick={() => onAction('adjust', s)} className="p-2 md:p-3.5 rounded-lg md:rounded-2xl bg-amber-500/10 text-amber-500 transition-colors hover:bg-amber-500/20"><Edit3 className="w-4 h-4 md:w-5 md:h-5" /></button>
-                                                <button onClick={() => onAction('dividend', s)} className="p-2 md:p-3.5 rounded-lg md:rounded-2xl bg-indigo-500/10 text-indigo-500 transition-colors hover:bg-indigo-500/20"><Gift className="w-4 h-4 md:w-5 md:h-5" /></button>
-                                                <button onClick={() => onAction('sell', s)} className="p-2 md:p-3.5 rounded-lg md:rounded-2xl bg-rose-500/10 text-rose-500 transition-colors hover:bg-rose-500/20"><Minus className="w-4 h-4 md:w-5 md:h-5" /></button>
+                                                <button onClick={() => onAction('adjust', s)} title="Sửa giá vốn" className="p-2 md:p-3.5 rounded-lg md:rounded-2xl bg-amber-500/10 text-amber-500 transition-colors hover:bg-amber-500/20"><Edit3 className="w-4 h-4 md:w-5 md:h-5" /></button>
+                                                <button onClick={() => onAction('dividend', s)} title="Ghi nhận cổ tức" className="p-2 md:p-3.5 rounded-lg md:rounded-2xl bg-indigo-500/10 text-indigo-500 transition-colors hover:bg-indigo-500/20"><Gift className="w-4 h-4 md:w-5 md:h-5" /></button>
+                                                <button onClick={() => onAction('sell', s)} title="Bán chứng khoán" className="p-2 md:p-3.5 rounded-lg md:rounded-2xl bg-rose-500/10 text-rose-500 transition-colors hover:bg-rose-500/20"><Minus className="w-4 h-4 md:w-5 md:h-5" /></button>
                                             </div>
                                         </td>
                                     </tr>
