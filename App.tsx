@@ -556,13 +556,13 @@ function extractPrice(html) {
         </div>
         {navItems}
         <div className="p-8 border-t border-slate-100 dark:border-slate-800">
-          <div className="bg-slate-50 dark:bg-slate-900/50 rounded-3xl p-5 border border-slate-100 dark:border-slate-800 flex items-center gap-3 md:gap-4 overflow-hidden">
-            <div className="p-3 bg-indigo-500/10 text-indigo-500 rounded-xl shrink-0"><Coins size={20} /></div>
-            <div className="min-w-0">
-                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest truncate">Tiền mặt tổng</div>
-                <div className="text-base md:text-lg font-black tracking-tight flex flex-wrap items-baseline gap-1 tabular-nums break-all">
-                  {stats.totalCash.toLocaleString('vi-VN')} <span className="text-[10px] opacity-50 font-medium">đ</span>
-                </div>
+          <div className="bg-slate-50 dark:bg-slate-900/50 rounded-3xl p-5 border border-slate-100 dark:border-slate-800 flex flex-col items-start gap-2 overflow-hidden shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-indigo-500/10 text-indigo-500 rounded-xl shrink-0"><Coins size={20} /></div>
+              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest truncate">Tiền mặt tổng</div>
+            </div>
+            <div className="w-full text-base lg:text-lg font-black tracking-tight tabular-nums break-all leading-tight">
+              {stats.totalCash.toLocaleString('vi-VN')} <span className="text-[10px] opacity-50 font-medium">đ</span>
             </div>
           </div>
           <button 
@@ -588,7 +588,7 @@ function extractPrice(html) {
             {navItems}
             <div className="p-8 mt-auto border-t border-slate-100 dark:border-slate-800">
               <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 truncate">Tiền mặt tổng</div>
-              <div className="text-lg font-black mb-4 tabular-nums break-all">{stats.totalCash.toLocaleString('vi-VN')} đ</div>
+              <div className="text-lg font-black mb-4 tabular-nums break-all leading-tight">{stats.totalCash.toLocaleString('vi-VN')} đ</div>
               <button 
                 onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')} 
                 className="w-full flex items-center justify-center gap-3 p-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-sm font-bold"
@@ -645,12 +645,12 @@ function extractPrice(html) {
               </div>
 
               <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 md:gap-10">
-                <div className="xl:col-span-2 bg-white dark:bg-slate-900/40 rounded-[2rem] md:rounded-[3rem] p-6 md:p-10 border border-slate-200 dark:border-slate-800 shadow-sm glass-panel">
+                <div className="xl:col-span-2 bg-white dark:bg-slate-900/40 rounded-[2rem] md:rounded-[3rem] p-6 md:p-10 border border-slate-200 dark:border-slate-800 shadow-sm glass-panel overflow-hidden min-h-[400px]">
                   <h3 className="text-lg md:text-xl font-black mb-6 md:mb-10 flex items-center gap-3 uppercase tracking-tighter text-indigo-500"><PieIcon size={22} /> Phân bổ tỷ trọng</h3>
-                  <div className="h-[300px] md:h-[400px]">
-                    <ResponsiveContainer width="100%" height="100%">
+                  <div className="w-full h-[350px] md:h-[400px]">
+                    <ResponsiveContainer width="100%" height="100%" debounce={50}>
                       <PieChart>
-                        <Pie data={brokerageData.map(b => ({ name: b.name, value: b.totalValue }))} cx="50%" cy="50%" innerRadius={window.innerWidth < 768 ? 60 : 100} outerRadius={window.innerWidth < 768 ? 90 : 150} paddingAngle={8} dataKey="value" stroke="none">
+                        <Pie data={brokerageData.map(b => ({ name: b.name, value: b.totalValue }))} cx="50%" cy="50%" innerRadius={window.innerWidth < 768 ? 60 : 100} outerRadius={window.innerWidth < 768 ? 90 : 140} paddingAngle={8} dataKey="value" stroke="none">
                           {brokerageData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                         </Pie>
                         <Tooltip 
@@ -955,7 +955,7 @@ const StatCard: React.FC<{ label: string; value: number; icon: React.ReactNode; 
       <span className="text-[9px] md:text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest truncate">{label}</span>
     </div>
     <div className="relative z-10">
-      <div className="text-lg md:text-xl lg:text-2xl font-black tracking-tight tabular-nums break-all">
+      <div className="text-base sm:text-lg md:text-xl lg:text-2xl font-black tracking-tight tabular-nums break-all leading-tight">
         {value.toLocaleString('vi-VN')} <span className="text-[10px] opacity-50 font-bold ml-0.5">đ</span>
       </div>
       {subValue && (
@@ -1003,7 +1003,7 @@ const BrokerageCard: React.FC<{ name: string; cash: number; netCapital: number; 
                 </div>
                 <div className="lg:text-right">
                     <div className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 truncate">Tài sản sàn</div>
-                    <div className="text-xl md:text-2xl lg:text-4xl font-black tracking-tight mb-2 md:mb-3 tabular-nums break-all">{totalValue.toLocaleString('vi-VN')} đ</div>
+                    <div className="text-xl md:text-2xl lg:text-4xl font-black tracking-tight mb-2 md:mb-3 tabular-nums break-all leading-tight">{totalValue.toLocaleString('vi-VN')} đ</div>
                     <div className={`text-[10px] md:text-xs font-black px-4 py-2 rounded-xl inline-flex items-center gap-2 ${profit >= 0 ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'}`}>
                         {profit >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
                         {profit >= 0 ? '+' : ''}{profitPercent.toFixed(2)}%
@@ -1052,7 +1052,7 @@ const BrokerageCard: React.FC<{ name: string; cash: number; netCapital: number; 
                                                 </div>
                                                 <div className="min-w-0">
                                                     <div className="flex items-center gap-2">
-                                                        <div className={`font-bold text-xl md:text-3xl tracking-tight truncate ${symbolColorClass}`}>
+                                                        <div className={`font-bold text-xl md:text-3xl tracking-tight truncate leading-none ${symbolColorClass}`}>
                                                           {s.symbol}
                                                         </div>
                                                         {gainPP < -7 && <AlertCircle size={16} className="text-red-500 animate-pulse shrink-0" />}
@@ -1063,24 +1063,24 @@ const BrokerageCard: React.FC<{ name: string; cash: number; netCapital: number; 
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className="px-4 md:px-6 py-6 md:py-8 text-right font-mono font-black text-base md:text-2xl tabular-nums break-all">{s.quantity.toLocaleString('vi-VN')}</td>
+                                        <td className="px-4 md:px-6 py-6 md:py-8 text-right font-mono font-black text-base md:text-2xl tabular-nums break-all leading-none">{s.quantity.toLocaleString('vi-VN')}</td>
                                         <td className="px-4 md:px-6 py-6 md:py-8 text-right">
                                             <div className="text-[9px] md:text-[11px] font-bold text-slate-400 mb-1 tabular-nums truncate">Vốn: {s.avgPrice.toLocaleString('vi-VN')}</div>
                                             <div className="text-sm md:text-xl font-black text-slate-800 dark:text-slate-100 tabular-nums truncate">HT: {s.currentPrice.toLocaleString('vi-VN')}</div>
                                         </td>
                                         <td className={`px-4 md:px-6 py-6 md:py-8 text-right font-black ${gain >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
                                             <div className="flex flex-col items-end">
-                                                <div className="text-sm md:text-2xl flex items-center gap-1 md:gap-2 tabular-nums truncate max-w-[150px]">
+                                                <div className="text-sm md:text-2xl flex items-center gap-1 md:gap-2 tabular-nums truncate max-w-[150px] leading-none">
                                                     {gain.toLocaleString('vi-VN')}
                                                 </div>
-                                                <div className="text-[9px] md:text-[11px] font-black opacity-80 uppercase tracking-tighter bg-current/10 px-2 py-0.5 rounded-md tabular-nums">{gainPP.toFixed(2)}%</div>
+                                                <div className="text-[9px] md:text-[11px] font-black opacity-80 uppercase tracking-tighter bg-current/10 px-2 py-0.5 rounded-md tabular-nums mt-1">{gainPP.toFixed(2)}%</div>
                                             </div>
                                         </td>
                                         <td className="px-6 md:px-10 py-6 md:py-8 text-right">
                                             <div className="flex gap-2 md:gap-3 justify-end lg:opacity-0 group-hover/row:opacity-100 transition-all shrink-0">
-                                                <button onClick={() => onAction('adjust', s)} className="p-2 md:p-3.5 rounded-lg md:rounded-2xl bg-amber-500/10 text-amber-500"><Edit3 className="w-4 h-4 md:w-5 md:h-5" /></button>
-                                                <button onClick={() => onAction('dividend', s)} className="p-2 md:p-3.5 rounded-lg md:rounded-2xl bg-indigo-500/10 text-indigo-500"><Gift className="w-4 h-4 md:w-5 md:h-5" /></button>
-                                                <button onClick={() => onAction('sell', s)} className="p-2 md:p-3.5 rounded-lg md:rounded-2xl bg-rose-500/10 text-rose-500"><Minus className="w-4 h-4 md:w-5 md:h-5" /></button>
+                                                <button onClick={() => onAction('adjust', s)} className="p-2 md:p-3.5 rounded-lg md:rounded-2xl bg-amber-500/10 text-amber-500 transition-colors hover:bg-amber-500/20"><Edit3 className="w-4 h-4 md:w-5 md:h-5" /></button>
+                                                <button onClick={() => onAction('dividend', s)} className="p-2 md:p-3.5 rounded-lg md:rounded-2xl bg-indigo-500/10 text-indigo-500 transition-colors hover:bg-indigo-500/20"><Gift className="w-4 h-4 md:w-5 md:h-5" /></button>
+                                                <button onClick={() => onAction('sell', s)} className="p-2 md:p-3.5 rounded-lg md:rounded-2xl bg-rose-500/10 text-rose-500 transition-colors hover:bg-rose-500/20"><Minus className="w-4 h-4 md:w-5 md:h-5" /></button>
                                             </div>
                                         </td>
                                     </tr>
