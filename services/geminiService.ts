@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { StockHolding, Transaction, AIAnalysisResponse } from "../types";
 
@@ -10,6 +9,43 @@ export interface StockTrendAnalysis {
   confidenceScore: number;
   sources: { title: string; uri: string }[];
 }
+
+export const getLatestPrices = async (symbols: string[]): Promise<Record<string, number>> => {
+  if (symbols.length === 0) return {};
+  
+  const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+  const model = "gemini-3-flash-preview";
+
+  const prompt = `Lấy giá đóng cửa gần nhất (giá khớp lệnh hiện tại) của các mã cổ phiếu sau trên thị trường chứng khoán Việt Nam: ${symbols.join(', ')}. 
+Chỉ trả về một đối tượng JSON duy nhất với key là mã cổ phiếu và value là giá dạng số (đơn vị đồng). 
+Ví dụ: {"HPG": 28500, "FPT": 115000}`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: model,
+      contents: prompt,
+      config: {
+        tools: [{ googleSearch: {} }],
+        systemInstruction: "Bạn là một bot cập nhật dữ liệu tài chính. Hãy tìm giá cổ phiếu mới nhất trên các trang tin cậy như CafeF, Vietstock hoặc bảng giá Lightning. Luôn trả về giá chính xác nhất tại thời điểm hiện tại.",
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: symbols.reduce((acc, sym) => ({
+            ...acc,
+            [sym]: { type: Type.NUMBER }
+          }), {})
+        }
+      }
+    });
+
+    const text = response.text;
+    if (!text) throw new Error("AI returned empty price data");
+    return JSON.parse(text) as Record<string, number>;
+  } catch (error) {
+    console.error("Gemini Price Fetch Error:", error);
+    throw error;
+  }
+};
 
 export const analyzePortfolio = async (
   holdings: StockHolding[], 

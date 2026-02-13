@@ -49,11 +49,12 @@ import {
   Compass,
   Link as LinkIcon,
   Sparkles,
-  Menu
+  Menu,
+  RefreshCw
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import { StockHolding, Transaction, TransactionType, AIAnalysisResponse } from './types';
-import { analyzePortfolio, searchStockTrend, StockTrendAnalysis } from './services/geminiService';
+import { analyzePortfolio, searchStockTrend, StockTrendAnalysis, getLatestPrices } from './services/geminiService';
 
 const HARDCODED_URL = ""; 
 
@@ -80,6 +81,7 @@ const App: React.FC = () => {
   const [cashBalances, setCashBalances] = useState<Record<string, number>>({});
   const [scriptUrl, setScriptUrl] = useState<string>(HARDCODED_URL || localStorage.getItem('google_script_url') || '');
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isRefreshingPrices, setIsRefreshingPrices] = useState(false);
   const [lastSynced, setLastSynced] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState<AIAnalysisResponse | null>(null);
@@ -189,6 +191,26 @@ const App: React.FC = () => {
       setTimeout(() => fetchFromSheets(true), 2500);
     } catch (e) { console.error("Push Error", e); }
     finally { setTimeout(() => setIsSyncing(false), 500); }
+  };
+
+  const handleRefreshPrices = async () => {
+    if (holdings.length === 0) return;
+    setIsRefreshingPrices(true);
+    // Explicitly cast the unique symbols set to string[] to resolve the 'unknown[]' type mismatch error
+    const symbols = Array.from(new Set(holdings.map(h => h.symbol))) as string[];
+    try {
+      const newPrices = await getLatestPrices(symbols);
+      const updatedHoldings = holdings.map(h => ({
+        ...h,
+        currentPrice: newPrices[h.symbol] || h.currentPrice
+      }));
+      setHoldings(updatedHoldings);
+      pushToSheets({ holdings: updatedHoldings, transactions, cashBalances });
+    } catch (e) {
+      alert("Không thể cập nhật giá hiện tại từ AI.");
+    } finally {
+      setIsRefreshingPrices(false);
+    }
   };
 
   const parseNum = (val: string) => {
@@ -444,8 +466,15 @@ const App: React.FC = () => {
                     {currentView === 'dashboard' ? 'Phân tích hiệu suất và cấu trúc danh mục.' : 'Theo dõi vốn và cổ phiếu tại từng sàn.'}
                   </p>
                 </div>
-                <div className="flex items-center gap-4">
-                  <button onClick={() => { setTransactionForm(INITIAL_TRANSACTION_FORM); setShowBuyModal(true); }} className="w-full md:w-auto flex items-center justify-center gap-3 px-6 md:px-8 py-3 md:py-4 bg-indigo-600 text-white rounded-2xl md:rounded-[1.5rem] font-bold hover:bg-indigo-700 shadow-xl shadow-indigo-600/20 active:scale-95 group">
+                <div className="flex flex-col sm:flex-row items-center gap-4">
+                  <button 
+                    onClick={handleRefreshPrices} 
+                    disabled={isRefreshingPrices || holdings.length === 0}
+                    className="w-full sm:w-auto flex items-center justify-center gap-3 px-6 py-3 md:py-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl font-bold hover:bg-slate-50 dark:hover:bg-slate-800 shadow-sm active:scale-95 disabled:opacity-50"
+                  >
+                      {isRefreshingPrices ? <Loader2 size={20} className="animate-spin" /> : <RefreshCw size={20} />} Cập nhật giá AI
+                  </button>
+                  <button onClick={() => { setTransactionForm(INITIAL_TRANSACTION_FORM); setShowBuyModal(true); }} className="w-full sm:w-auto flex items-center justify-center gap-3 px-6 md:px-8 py-3 md:py-4 bg-indigo-600 text-white rounded-2xl md:rounded-[1.5rem] font-bold hover:bg-indigo-700 shadow-xl shadow-indigo-600/20 active:scale-95 group">
                       <Plus size={20} className="group-hover:rotate-90 transition-transform" /> Mua mới
                   </button>
                 </div>
@@ -860,7 +889,7 @@ const BrokerageCard: React.FC<{ name: string; cash: number; netCapital: number; 
                                         <td className="px-6 md:px-10 py-6 md:py-8">
                                             <div className="flex items-center gap-3 md:gap-4">
                                                 <div className={`p-2 md:p-4 rounded-xl md:rounded-2xl ${bgColorClass} ${symbolColorClass}`}>
-                                                    {gainPP >= 0 ? <GainIcon className="w-4 h-4 md:w-6 md:h-6" /> : <LossIcon className="w-4 h-4 md:w-6 md:h-6" />}
+                                                    {gainPP >= 0 ? <GainIcon className="w-4 h-4 md:w-6 h-6" /> : <LossIcon className="w-4 h-4 md:w-6 h-6" />}
                                                 </div>
                                                 <div>
                                                     <div className="flex items-center gap-2">
