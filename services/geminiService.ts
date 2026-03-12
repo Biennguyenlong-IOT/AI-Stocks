@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { StockHolding, Transaction, AIAnalysisResponse } from "../types";
 
@@ -10,10 +11,36 @@ export interface StockTrendAnalysis {
   sources: { title: string; uri: string }[];
 }
 
+const cache = new Map<string, { data: any, timestamp: number }>();
+const CACHE_DURATION = 1000 * 60 * 5; // 5 minutes
+
+const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
+
+const callWithRetry = async (fn: () => Promise<any>, retries = 3, backoff = 1000): Promise<any> => {
+  try {
+    return await fn();
+  } catch (error: any) {
+    const errorString = typeof error === 'string' ? error : (error?.message || JSON.stringify(error));
+    if (retries > 0 && (errorString.includes('429') || errorString.includes('RESOURCE_EXHAUSTED') || errorString.includes('quota'))) {
+      await delay(backoff);
+      return callWithRetry(fn, retries - 1, backoff * 2);
+    }
+    throw error;
+  }
+};
+
+const getAI = () => {
+  const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+  if (!apiKey || apiKey === 'YOUR_API_KEY_HERE') {
+    throw new Error("API Key Gemini chưa được cấu hình. Vui lòng kiểm tra file .env.local.");
+  }
+  return new GoogleGenAI({ apiKey });
+};
+
 export const getLatestPrices = async (symbols: string[]): Promise<Record<string, number>> => {
   if (symbols.length === 0) return {};
   
-  const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+  const ai = getAI();
   const model = "gemini-3-flash-preview";
 
   const prompt = `Lấy giá đóng cửa gần nhất (giá khớp lệnh hiện tại) của các mã cổ phiếu sau trên thị trường chứng khoán Việt Nam: ${symbols.join(', ')}. 
@@ -41,9 +68,13 @@ Ví dụ: {"HPG": 28500, "FPT": 115000}`;
     const text = response.text;
     if (!text) throw new Error("AI returned empty price data");
     return JSON.parse(text) as Record<string, number>;
-  } catch (error) {
+  } catch (error: any) {
+    const errorString = typeof error === 'string' ? error : (error?.message || JSON.stringify(error));
+    if (errorString.includes('429') || errorString.includes('RESOURCE_EXHAUSTED') || errorString.includes('quota')) {
+      throw new Error("Tài khoản Gemini của bạn đã hết hạn mức (Quota). Vui lòng đợi một lát hoặc sử dụng API Key khác.");
+    }
     console.error("Gemini Price Fetch Error:", error);
-    throw error;
+    throw new Error("Lỗi kết nối AI: " + errorString);
   }
 };
 
@@ -52,7 +83,7 @@ export const analyzePortfolio = async (
   transactions: Transaction[],
   stats: { totalAssets: number; totalCash: number; totalProfit: number; profitPercent: number }
 ): Promise<AIAnalysisResponse> => {
-  const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+  const ai = getAI();
   const model = "gemini-3-flash-preview";
   
   const holdingDetails = holdings.map(h => {
@@ -96,14 +127,22 @@ YÊU CẦU TRẢ VỀ JSON chuẩn. Ngôn ngữ chuyên nghiệp, sắc bén.`;
     const text = response.text;
     if (!text) throw new Error("AI returned empty content");
     return JSON.parse(text) as AIAnalysisResponse;
-  } catch (error) {
+  } catch (error: any) {
+    const errorString = typeof error === 'string' ? error : (error?.message || JSON.stringify(error));
+    if (errorString.includes('429') || errorString.includes('RESOURCE_EXHAUSTED') || errorString.includes('quota')) {
+      throw new Error("Tài khoản Gemini của bạn đã hết hạn mức (Quota). Vui lòng đợi một lát hoặc sử dụng API Key khác.");
+    }
     console.error("Gemini Analysis Error:", error);
-    throw error;
+    throw new Error("Lỗi kết nối AI: " + errorString);
   }
 };
 
 export const searchStockTrend = async (symbol: string): Promise<StockTrendAnalysis> => {
-  const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+  if (cache.has(symbol) && Date.now() - cache.get(symbol)!.timestamp < CACHE_DURATION) {
+    return cache.get(symbol)!.data;
+  }
+
+  const ai = getAI();
   const model = 'gemini-3-flash-preview';
 
   const prompt = `Phân tích mã cổ phiếu "${symbol}" tại thị trường chứng khoán Việt Nam. 
@@ -114,7 +153,7 @@ Xác định dựa trên các thông tin mới nhất:
 4. Trả về kết quả dưới dạng JSON.`;
 
   try {
-    const response = await ai.models.generateContent({
+    const response = await callWithRetry(() => ai.models.generateContent({
       model: model,
       contents: prompt,
       config: {
@@ -133,7 +172,7 @@ Xác định dựa trên các thông tin mới nhất:
           required: ["symbol", "isBottoming", "isUptrend", "reasoning", "confidenceScore"]
         }
       }
-    });
+    }));
 
     const text = response.text;
     if (!text) throw new Error("Empty response from AI");
@@ -151,9 +190,15 @@ Xác định dựa trên các thông tin mới nhất:
       });
     }
 
-    return { ...data, sources };
-  } catch (error) {
+    const result = { ...data, sources };
+    cache.set(symbol, { data: result, timestamp: Date.now() });
+    return result;
+  } catch (error: any) {
+    const errorString = typeof error === 'string' ? error : (error?.message || JSON.stringify(error));
+    if (errorString.includes('429') || errorString.includes('RESOURCE_EXHAUSTED') || errorString.includes('quota')) {
+      throw new Error("Tài khoản Gemini của bạn đã hết hạn mức (Quota). Vui lòng đợi một lát hoặc sử dụng API Key khác.");
+    }
     console.error("Stock Trend Search Error:", error);
-    throw error;
+    throw new Error("Lỗi kết nối AI: " + errorString);
   }
 };

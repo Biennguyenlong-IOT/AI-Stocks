@@ -443,8 +443,10 @@ function extractPrice(html) {
     try {
       const result = await searchStockTrend(searchSymbol.toUpperCase());
       setTrendResult(result);
-    } catch (e) {
-      alert("Lỗi khi phân tích xu hướng.");
+    } catch (e: any) {
+      console.error("Trend Search Error:", e);
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      alert(errorMessage || "Lỗi khi phân tích xu hướng.");
     } finally {
       setIsSearchingTrend(false);
     }
@@ -696,7 +698,10 @@ function extractPrice(html) {
                                   }); 
                                   setAiAnalysis(res); 
                                 } 
-                                catch (e) { alert("Lỗi hệ thống AI"); }
+                                catch (e: any) { 
+                                  console.error("AI Analysis Error:", e);
+                                  alert(e.message || "Lỗi hệ thống AI"); 
+                                }
                                 finally { setIsAnalyzing(false); }
                             }} disabled={holdings.length === 0 || isAnalyzing} className="w-full py-4 md:py-6 rounded-2xl md:rounded-3xl bg-indigo-600 text-white font-black shadow-lg">
                                 {isAnalyzing ? <Loader2 className="animate-spin inline mr-2" /> : <Zap size={18} className="inline mr-2" />} PHÂN TÍCH NGAY
