@@ -11,6 +11,15 @@ export interface StockTrendAnalysis {
   sources: { title: string; uri: string }[];
 }
 
+const cleanAndParseJson = (text: string) => {
+  let cleaned = text.trim();
+  const match = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+  if (match) {
+    cleaned = match[1].trim();
+  }
+  return JSON.parse(cleaned);
+};
+
 const cache = new Map<string, { data: any, timestamp: number }>();
 const CACHE_DURATION = 1000 * 60 * 5; // 5 minutes
 
@@ -44,7 +53,7 @@ export const getLatestPrices = async (symbols: string[]): Promise<Record<string,
   const modelsToTry = ["gemini-3-flash-preview", "gemini-2.5-flash", "gemini-1.5-flash"];
 
   const prompt = `Lấy giá đóng cửa gần nhất (giá khớp lệnh hiện tại) của các mã cổ phiếu sau trên thị trường chứng khoán Việt Nam: ${symbols.join(', ')}. 
-Chỉ trả về một đối tượng JSON duy nhất với key là mã cổ phiếu và value là giá dạng số (đơn vị đồng). 
+Chỉ trả về MỘT ĐỐI TƯỢNG JSON duy nhất với key là mã cổ phiếu và value là giá dạng số (đơn vị đồng). Không thêm bất kỳ văn bản giải thích nào khác.
 Ví dụ: {"HPG": 28500, "FPT": 115000}`;
 
   let lastError: any = null;
@@ -56,21 +65,13 @@ Ví dụ: {"HPG": 28500, "FPT": 115000}`;
         contents: prompt,
         config: {
           tools: [{ googleSearch: {} }],
-          systemInstruction: "Bạn là một bot cập nhật dữ liệu tài chính. Hãy tìm giá cổ phiếu mới nhất trên các trang tin cậy như CafeF, Vietstock hoặc bảng giá Lightning. Luôn trả về giá chính xác nhất tại thời điểm hiện tại.",
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: symbols.reduce((acc, sym) => ({
-              ...acc,
-              [sym]: { type: Type.NUMBER }
-            }), {})
-          }
+          systemInstruction: "Bạn là một bot cập nhật dữ liệu tài chính. Hãy tìm giá cổ phiếu mới nhất trên các trang tin cậy như CafeF, Vietstock hoặc bảng giá Lightning. Luôn trả về DUY NHẤT một chuỗi JSON hợp lệ.",
         }
       });
 
       const text = response.text;
       if (!text) throw new Error("AI returned empty price data");
-      return JSON.parse(text) as Record<string, number>;
+      return cleanAndParseJson(text) as Record<string, number>;
     } catch (error: any) {
       lastError = error;
       const errorString = typeof error === 'string' ? error : (error?.message || JSON.stringify(error));
@@ -170,7 +171,16 @@ Xác định dựa trên các thông tin mới nhất:
 1. Cổ phiếu có đang trong quá trình tạo đáy (forming a bottom) không?
 2. Cổ phiếu có đang trong xu hướng tăng (uptrend) không?
 3. Lý do cụ thể dựa trên phân tích kỹ thuật và tin tức gần đây.
-4. Trả về kết quả dưới dạng JSON.`;
+4. Mức độ tin cậy (confidenceScore từ 0 đến 100).
+
+Chỉ trả về MỘT ĐỐI TƯỢNG JSON chuẩn với cấu trúc:
+{
+  "symbol": "${symbol}",
+  "isBottoming": boolean,
+  "isUptrend": boolean,
+  "reasoning": "Lý do...",
+  "confidenceScore": number
+}`;
 
   let lastError: any = null;
 
@@ -181,26 +191,14 @@ Xác định dựa trên các thông tin mới nhất:
         contents: prompt,
         config: {
           tools: [{ googleSearch: {} }],
-          systemInstruction: "Bạn là một chuyên gia phân tích kỹ thuật chứng khoán. Hãy sử dụng Google Search để tìm dữ liệu giá và tin tức mới nhất về mã cổ phiếu được yêu cầu. Phân tích xu hướng và trả về kết quả JSON chính xác.",
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              symbol: { type: Type.STRING },
-              isBottoming: { type: Type.BOOLEAN },
-              isUptrend: { type: Type.BOOLEAN },
-              reasoning: { type: Type.STRING },
-              confidenceScore: { type: Type.NUMBER, description: "Từ 0 đến 100" }
-            },
-            required: ["symbol", "isBottoming", "isUptrend", "reasoning", "confidenceScore"]
-          }
+          systemInstruction: "Bạn là một chuyên gia phân tích kỹ thuật chứng khoán. Hãy sử dụng Google Search để tìm dữ liệu giá và tin tức mới nhất về mã cổ phiếu được yêu cầu. Phân tích xu hướng và trả về DUY NHẤT một chuỗi JSON hợp lệ.",
         }
       });
 
       const text = response.text;
       if (!text) throw new Error("Empty response from AI");
       
-      const data = JSON.parse(text);
+      const data = cleanAndParseJson(text);
       
       // Trích xuất các nguồn từ grounding metadata
       const sources: { title: string; uri: string }[] = [];
