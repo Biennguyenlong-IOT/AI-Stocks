@@ -54,7 +54,7 @@ import {
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import { StockHolding, Transaction, TransactionType, AIAnalysisResponse } from './types';
-import { analyzePortfolio, searchStockTrend, StockTrendAnalysis } from './services/geminiService';
+import { analyzePortfolio, searchStockTrend, getLatestPrices, StockTrendAnalysis } from './services/geminiService';
 
 const HARDCODED_URL = ""; 
 
@@ -307,61 +307,111 @@ function extractPrice(html) {
 
   const fetchFromSheets = async (silent = false) => {
     const url = scriptUrl.trim();
-    if (!url || !url.includes('/exec')) return;
+    if (!url || !url.includes('/exec')) {
+      if (!silent) alert("Chưa cấu hình URL Google Apps Script WebApp. Vui lòng vào 'Kết nối Cloud' trong Cài đặt.");
+      return;
+    }
     if (!silent) setIsSyncing(true);
     try {
       const response = await fetch(`${url}?t=${Date.now()}`);
-      if (!response.ok) throw new Error();
-      const data = await response.json();
-      if (data) {
-        setHoldings(data.holdings || []);
-        setTransactions(data.transactions || []);
-        setCashBalances(data.cashBalances || {});
-        setLastSynced(new Date().toLocaleTimeString());
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const text = await response.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error("Không thể đọc định dạng dữ liệu (Phản hồi không phải JSON). Đảm bảo Google Apps Script đã được xuất bản dưới quyền 'Anyone' (Bất kỳ ai).");
+      }
+      if (data && typeof data === 'object') {
+        if (Array.isArray(data.holdings)) setHoldings(data.holdings);
+        if (Array.isArray(data.transactions)) setTransactions(data.transactions);
+        if (data.cashBalances && typeof data.cashBalances === 'object') setCashBalances(data.cashBalances);
+        setLastSynced(new Date().toLocaleTimeString('vi-VN'));
         localStorage.setItem('portfolio_full_state', JSON.stringify(data));
       }
-    } catch (e) { if (!silent) console.error("Sync Error", e); }
-    finally { if (!silent) setIsSyncing(false); }
+    } catch (e: any) { 
+      const msg = e?.message || "Lỗi đồng bộ Dữ liệu với Google Sheets.";
+      if (!silent) {
+        alert(msg);
+      } else {
+        console.warn("Cloud Sync Notice:", msg); 
+      }
+    } finally { 
+      if (!silent) setIsSyncing(false); 
+    }
   };
 
   const pushToSheets = async (currentState: any) => {
+    // Always persist locally
+    localStorage.setItem('portfolio_full_state', JSON.stringify(currentState));
     const url = scriptUrl.trim();
     if (!url || !url.includes('/exec')) return;
     setIsSyncing(true);
     try {
-      localStorage.setItem('portfolio_full_state', JSON.stringify(currentState));
       await fetch(url, { 
         method: 'POST', 
         mode: 'no-cors', 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(currentState) 
       });
-      setLastSynced(new Date().toLocaleTimeString());
+      setLastSynced(new Date().toLocaleTimeString('vi-VN'));
       setTimeout(() => fetchFromSheets(true), 2500);
-    } catch (e) { console.error("Push Error", e); }
-    finally { setTimeout(() => setIsSyncing(false), 500); }
+    } catch (e: any) { 
+      console.warn("Cloud Push Notice:", e?.message || e); 
+    } finally { 
+      setTimeout(() => setIsSyncing(false), 500); 
+    }
   };
 
   const handleRefreshPrices = async () => {
-    const url = scriptUrl.trim();
-    if (!url || !url.includes('/exec')) return alert("Vui lòng cấu hình WebApp URL trong phần Cài đặt.");
-    
+    if (holdings.length === 0) {
+      alert("Danh mục chưa có cổ phiếu nào để cập nhật giá.");
+      return;
+    }
+
     setIsRefreshingPrices(true);
+    
+    // Attempt Google Apps Script refresh if configured
+    const url = scriptUrl.trim();
+    if (url && url.includes('/exec')) {
+      try {
+        await fetch(url, { 
+          method: 'POST', 
+          mode: 'no-cors', 
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'updatePricesFromWebAndSync_Pro' }) 
+        });
+        setTimeout(() => {
+          fetchFromSheets(true);
+          setIsRefreshingPrices(false);
+        }, 3000);
+        return;
+      } catch (e) {
+        console.warn("GAS price refresh failed, falling back to Gemini AI...", e);
+      }
+    }
+
+    // Direct Gemini AI Price Update
     try {
-      await fetch(url, { 
-        method: 'POST', 
-        mode: 'no-cors', 
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'updatePricesFromWebAndSync_Pro' }) 
-      });
+      const symbols = Array.from(new Set<string>(holdings.map(h => h.symbol)));
+      const newPrices = await getLatestPrices(symbols);
       
-      setTimeout(() => {
-        fetchFromSheets();
-        setIsRefreshingPrices(false);
-      }, 10000);
-    } catch (e) {
-      console.error("Refresh Prices Error", e);
-      alert("Lỗi khi kết nối với Google Apps Script.");
+      let updatedCount = 0;
+      setHoldings(prev => prev.map(h => {
+        if (newPrices[h.symbol] && newPrices[h.symbol] > 0) {
+          updatedCount++;
+          return { ...h, currentPrice: newPrices[h.symbol] };
+        }
+        return h;
+      }));
+      
+      alert(`Đã cập nhật giá thị trường bằng Gemini AI thành công!`);
+    } catch (e: any) {
+      console.error("Price Refresh Error:", e);
+      alert(e?.message || "Lỗi khi cập nhật giá cổ phiếu.");
+    } finally {
       setIsRefreshingPrices(false);
     }
   };
