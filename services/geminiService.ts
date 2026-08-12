@@ -143,7 +143,7 @@ export const searchStockTrend = async (symbol: string): Promise<StockTrendAnalys
   }
 
   const ai = getAI();
-  const model = 'gemini-3-flash-preview';
+  const modelsToTry = ['gemini-3-flash-preview', 'gemini-2.5-flash', 'gemini-1.5-flash'];
 
   const prompt = `Phân tích mã cổ phiếu "${symbol}" tại thị trường chứng khoán Việt Nam. 
 Xác định dựa trên các thông tin mới nhất:
@@ -152,53 +152,64 @@ Xác định dựa trên các thông tin mới nhất:
 3. Lý do cụ thể dựa trên phân tích kỹ thuật và tin tức gần đây.
 4. Trả về kết quả dưới dạng JSON.`;
 
-  try {
-    const response = await callWithRetry(() => ai.models.generateContent({
-      model: model,
-      contents: prompt,
-      config: {
-        tools: [{ googleSearch: {} }],
-        systemInstruction: "Bạn là một chuyên gia phân tích kỹ thuật chứng khoán. Hãy sử dụng Google Search để tìm dữ liệu giá và tin tức mới nhất về mã cổ phiếu được yêu cầu. Phân tích xu hướng và trả về kết quả JSON chính xác.",
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            symbol: { type: Type.STRING },
-            isBottoming: { type: Type.BOOLEAN },
-            isUptrend: { type: Type.BOOLEAN },
-            reasoning: { type: Type.STRING },
-            confidenceScore: { type: Type.NUMBER, description: "Từ 0 đến 100" }
-          },
-          required: ["symbol", "isBottoming", "isUptrend", "reasoning", "confidenceScore"]
-        }
-      }
-    }));
+  let lastError: any = null;
 
-    const text = response.text;
-    if (!text) throw new Error("Empty response from AI");
-    
-    const data = JSON.parse(text);
-    
-    // Trích xuất các nguồn từ grounding metadata
-    const sources: { title: string; uri: string }[] = [];
-    const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
-    if (chunks) {
-      chunks.forEach((chunk: any) => {
-        if (chunk.web) {
-          sources.push({ title: chunk.web.title, uri: chunk.web.uri });
+  for (const model of modelsToTry) {
+    try {
+      const response = await ai.models.generateContent({
+        model: model,
+        contents: prompt,
+        config: {
+          tools: [{ googleSearch: {} }],
+          systemInstruction: "Bạn là một chuyên gia phân tích kỹ thuật chứng khoán. Hãy sử dụng Google Search để tìm dữ liệu giá và tin tức mới nhất về mã cổ phiếu được yêu cầu. Phân tích xu hướng và trả về kết quả JSON chính xác.",
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              symbol: { type: Type.STRING },
+              isBottoming: { type: Type.BOOLEAN },
+              isUptrend: { type: Type.BOOLEAN },
+              reasoning: { type: Type.STRING },
+              confidenceScore: { type: Type.NUMBER, description: "Từ 0 đến 100" }
+            },
+            required: ["symbol", "isBottoming", "isUptrend", "reasoning", "confidenceScore"]
+          }
         }
       });
-    }
 
-    const result = { ...data, sources };
-    cache.set(symbol, { data: result, timestamp: Date.now() });
-    return result;
-  } catch (error: any) {
-    const errorString = typeof error === 'string' ? error : (error?.message || JSON.stringify(error));
-    if (errorString.includes('429') || errorString.includes('RESOURCE_EXHAUSTED') || errorString.includes('quota')) {
-      throw new Error("Tài khoản Gemini của bạn đã hết hạn mức (Quota). Vui lòng đợi một lát hoặc sử dụng API Key khác.");
+      const text = response.text;
+      if (!text) throw new Error("Empty response from AI");
+      
+      const data = JSON.parse(text);
+      
+      // Trích xuất các nguồn từ grounding metadata
+      const sources: { title: string; uri: string }[] = [];
+      const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
+      if (chunks) {
+        chunks.forEach((chunk: any) => {
+          if (chunk.web) {
+            sources.push({ title: chunk.web.title, uri: chunk.web.uri });
+          }
+        });
+      }
+
+      const result = { ...data, sources };
+      cache.set(symbol, { data: result, timestamp: Date.now() });
+      return result;
+    } catch (error: any) {
+      lastError = error;
+      const errorString = typeof error === 'string' ? error : (error?.message || JSON.stringify(error));
+      console.warn(`Model ${model} failed:`, errorString);
+      if (!errorString.includes('429') && !errorString.includes('RESOURCE_EXHAUSTED') && !errorString.includes('quota')) {
+        break;
+      }
     }
-    console.error("Stock Trend Search Error:", error);
-    throw new Error("Lỗi kết nối AI: " + errorString);
   }
+
+  const errorString = typeof lastError === 'string' ? lastError : (lastError?.message || JSON.stringify(lastError));
+  if (errorString.includes('429') || errorString.includes('RESOURCE_EXHAUSTED') || errorString.includes('quota')) {
+    throw new Error("Tài khoản Gemini của bạn đã hết hạn mức (HTTP 429 Too Many Requests). Vui lòng đợi 1-2 phút hoặc kiểm tra lại GEMINI_API_KEY trong file .env.local.");
+  }
+  console.error("Stock Trend Search Error:", lastError);
+  throw new Error("Lỗi kết nối AI: " + errorString);
 };
