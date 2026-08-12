@@ -103,6 +103,7 @@ const App: React.FC = () => {
   const [searchSymbol, setSearchSymbol] = useState('');
   const [trendResult, setTrendResult] = useState<StockTrendAnalysis | null>(null);
   const [isSearchingTrend, setIsSearchingTrend] = useState(false);
+  const [trendError, setTrendError] = useState<string | null>(null);
 
   const GAS_CODE = `function doGet(e) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -440,13 +441,14 @@ function extractPrice(html) {
     if (!searchSymbol) return;
     setIsSearchingTrend(true);
     setTrendResult(null);
+    setTrendError(null);
     try {
       const result = await searchStockTrend(searchSymbol.toUpperCase());
       setTrendResult(result);
     } catch (e: any) {
       console.error("Trend Search Error:", e);
       const errorMessage = e instanceof Error ? e.message : String(e);
-      alert(errorMessage || "Lỗi khi phân tích xu hướng.");
+      setTrendError(errorMessage);
     } finally {
       setIsSearchingTrend(false);
     }
@@ -789,6 +791,30 @@ function extractPrice(html) {
                         <h4 className="text-lg md:text-xl font-black uppercase tracking-tighter">Đang quét dữ liệu...</h4>
                         <p className="text-slate-500 text-xs animate-pulse">Tìm kiếm thông tin từ Google News & Search</p>
                       </div>
+                  </div>
+                )}
+
+                {trendError && (
+                  <div className="p-6 md:p-8 bg-rose-500/10 border-2 border-rose-500/30 rounded-2xl md:rounded-[2rem] space-y-4 text-rose-600 dark:text-rose-400 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                    <div className="flex items-center gap-3">
+                      <AlertCircle className="w-6 h-6 md:w-8 md:h-8 shrink-0 text-rose-500" />
+                      <h4 className="font-black text-base md:text-lg uppercase tracking-tight">Hạn Mức Gemini API (HTTP 429)</h4>
+                    </div>
+                    <p className="text-xs md:text-sm font-medium leading-relaxed">{trendError}</p>
+                    <div className="text-xs bg-white/60 dark:bg-slate-900/60 p-4 rounded-xl border border-rose-500/20 space-y-1.5 font-medium">
+                      <p className="font-bold text-slate-800 dark:text-slate-200">💡 Hướng dẫn khắc phục nhanh:</p>
+                      <ul className="list-disc list-inside space-y-1 text-slate-600 dark:text-slate-300">
+                        <li>Đợi 1–2 phút rồi bấm <strong>Thử Phân Tích Lại</strong> (để Google AI Studio reset quota theo phút).</li>
+                        <li>Đảm bảo file <code>.env.local</code> chứa đúng biến <code>GEMINI_API_KEY=mã_key_của_bạn</code>.</li>
+                        <li>Tạo API Key mới tại <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="underline font-bold text-indigo-600 dark:text-indigo-400">Google AI Studio</a> nếu key hiện tại đã cạn quota ngày.</li>
+                      </ul>
+                    </div>
+                    <button 
+                      onClick={handleTrendSearch}
+                      className="px-6 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-black text-xs md:text-sm rounded-xl shadow-md transition-all uppercase tracking-wider"
+                    >
+                      Thử Phân Tích Lại
+                    </button>
                   </div>
                 )}
 
