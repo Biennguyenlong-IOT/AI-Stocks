@@ -41,41 +41,51 @@ export const getLatestPrices = async (symbols: string[]): Promise<Record<string,
   if (symbols.length === 0) return {};
   
   const ai = getAI();
-  const model = "gemini-3-flash-preview";
+  const modelsToTry = ["gemini-3-flash-preview", "gemini-2.5-flash", "gemini-1.5-flash"];
 
   const prompt = `Lấy giá đóng cửa gần nhất (giá khớp lệnh hiện tại) của các mã cổ phiếu sau trên thị trường chứng khoán Việt Nam: ${symbols.join(', ')}. 
 Chỉ trả về một đối tượng JSON duy nhất với key là mã cổ phiếu và value là giá dạng số (đơn vị đồng). 
 Ví dụ: {"HPG": 28500, "FPT": 115000}`;
 
-  try {
-    const response = await ai.models.generateContent({
-      model: model,
-      contents: prompt,
-      config: {
-        tools: [{ googleSearch: {} }],
-        systemInstruction: "Bạn là một bot cập nhật dữ liệu tài chính. Hãy tìm giá cổ phiếu mới nhất trên các trang tin cậy như CafeF, Vietstock hoặc bảng giá Lightning. Luôn trả về giá chính xác nhất tại thời điểm hiện tại.",
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: symbols.reduce((acc, sym) => ({
-            ...acc,
-            [sym]: { type: Type.NUMBER }
-          }), {})
-        }
-      }
-    });
+  let lastError: any = null;
 
-    const text = response.text;
-    if (!text) throw new Error("AI returned empty price data");
-    return JSON.parse(text) as Record<string, number>;
-  } catch (error: any) {
-    const errorString = typeof error === 'string' ? error : (error?.message || JSON.stringify(error));
-    if (errorString.includes('429') || errorString.includes('RESOURCE_EXHAUSTED') || errorString.includes('quota')) {
-      throw new Error("Tài khoản Gemini của bạn đã hết hạn mức (Quota). Vui lòng đợi một lát hoặc sử dụng API Key khác.");
+  for (const model of modelsToTry) {
+    try {
+      const response = await ai.models.generateContent({
+        model: model,
+        contents: prompt,
+        config: {
+          tools: [{ googleSearch: {} }],
+          systemInstruction: "Bạn là một bot cập nhật dữ liệu tài chính. Hãy tìm giá cổ phiếu mới nhất trên các trang tin cậy như CafeF, Vietstock hoặc bảng giá Lightning. Luôn trả về giá chính xác nhất tại thời điểm hiện tại.",
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: symbols.reduce((acc, sym) => ({
+              ...acc,
+              [sym]: { type: Type.NUMBER }
+            }), {})
+          }
+        }
+      });
+
+      const text = response.text;
+      if (!text) throw new Error("AI returned empty price data");
+      return JSON.parse(text) as Record<string, number>;
+    } catch (error: any) {
+      lastError = error;
+      const errorString = typeof error === 'string' ? error : (error?.message || JSON.stringify(error));
+      if (!errorString.includes('429') && !errorString.includes('RESOURCE_EXHAUSTED') && !errorString.includes('quota')) {
+        break;
+      }
     }
-    console.error("Gemini Price Fetch Error:", error);
-    throw new Error("Lỗi kết nối AI: " + errorString);
   }
+
+  const errorString = typeof lastError === 'string' ? lastError : (lastError?.message || JSON.stringify(lastError));
+  if (errorString.includes('429') || errorString.includes('RESOURCE_EXHAUSTED') || errorString.includes('quota')) {
+    throw new Error("Tài khoản Gemini của bạn đã hết hạn mức (Quota). Vui lòng đợi 1-2 phút hoặc sử dụng API Key khác.");
+  }
+  console.error("Gemini Price Fetch Error:", lastError);
+  throw new Error("Lỗi kết nối AI: " + errorString);
 };
 
 export const analyzePortfolio = async (
@@ -84,7 +94,7 @@ export const analyzePortfolio = async (
   stats: { totalAssets: number; totalCash: number; totalProfit: number; profitPercent: number }
 ): Promise<AIAnalysisResponse> => {
   const ai = getAI();
-  const model = "gemini-3-flash-preview";
+  const modelsToTry = ["gemini-3-flash-preview", "gemini-2.5-flash", "gemini-1.5-flash"];
   
   const holdingDetails = holdings.map(h => {
     const value = h.quantity * h.currentPrice;
@@ -104,37 +114,47 @@ ${holdingDetails}
 
 YÊU CẦU TRẢ VỀ JSON chuẩn. Ngôn ngữ chuyên nghiệp, sắc bén.`;
 
-  try {
-    const response = await ai.models.generateContent({
-      model: model,
-      contents: prompt,
-      config: {
-        systemInstruction: "Bạn là chuyên gia phân tích tài chính cấp cao, chuyên về quản trị danh mục và tối ưu hóa lợi nhuận tại thị trường Việt Nam.",
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            riskScore: { type: Type.NUMBER },
-            tradeAnalysis: { type: Type.STRING },
-            assetAnalysis: { type: Type.STRING },
-            recommendations: { type: Type.ARRAY, items: { type: Type.STRING } }
-          },
-          required: ["riskScore", "tradeAnalysis", "assetAnalysis", "recommendations"]
-        }
-      }
-    });
+  let lastError: any = null;
 
-    const text = response.text;
-    if (!text) throw new Error("AI returned empty content");
-    return JSON.parse(text) as AIAnalysisResponse;
-  } catch (error: any) {
-    const errorString = typeof error === 'string' ? error : (error?.message || JSON.stringify(error));
-    if (errorString.includes('429') || errorString.includes('RESOURCE_EXHAUSTED') || errorString.includes('quota')) {
-      throw new Error("Tài khoản Gemini của bạn đã hết hạn mức (Quota). Vui lòng đợi một lát hoặc sử dụng API Key khác.");
+  for (const model of modelsToTry) {
+    try {
+      const response = await ai.models.generateContent({
+        model: model,
+        contents: prompt,
+        config: {
+          systemInstruction: "Bạn là chuyên gia phân tích tài chính cấp cao, chuyên về quản trị danh mục và tối ưu hóa lợi nhuận tại thị trường Việt Nam.",
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              riskScore: { type: Type.NUMBER },
+              tradeAnalysis: { type: Type.STRING },
+              assetAnalysis: { type: Type.STRING },
+              recommendations: { type: Type.ARRAY, items: { type: Type.STRING } }
+            },
+            required: ["riskScore", "tradeAnalysis", "assetAnalysis", "recommendations"]
+          }
+        }
+      });
+
+      const text = response.text;
+      if (!text) throw new Error("AI returned empty content");
+      return JSON.parse(text) as AIAnalysisResponse;
+    } catch (error: any) {
+      lastError = error;
+      const errorString = typeof error === 'string' ? error : (error?.message || JSON.stringify(error));
+      if (!errorString.includes('429') && !errorString.includes('RESOURCE_EXHAUSTED') && !errorString.includes('quota')) {
+        break;
+      }
     }
-    console.error("Gemini Analysis Error:", error);
-    throw new Error("Lỗi kết nối AI: " + errorString);
   }
+
+  const errorString = typeof lastError === 'string' ? lastError : (lastError?.message || JSON.stringify(lastError));
+  if (errorString.includes('429') || errorString.includes('RESOURCE_EXHAUSTED') || errorString.includes('quota')) {
+    throw new Error("Tài khoản Gemini của bạn đã hết hạn mức (Quota). Vui lòng đợi 1-2 phút hoặc sử dụng API Key khác.");
+  }
+  console.error("Gemini Analysis Error:", lastError);
+  throw new Error("Lỗi kết nối AI: " + errorString);
 };
 
 export const searchStockTrend = async (symbol: string): Promise<StockTrendAnalysis> => {
